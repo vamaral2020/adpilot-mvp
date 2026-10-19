@@ -3,6 +3,10 @@ package br.com.adpilot.integrations.meta;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.LocalDate;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import org.springframework.http.MediaType;
+import org.springframework.mock.http.MockHttpInputMessage;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
@@ -34,5 +38,21 @@ class MetaAdsClientTest {
         assertFalse(new MetaSettings("v26.0","act_123456","token","https://graph.facebook.com").configured());
         assertFalse(new MetaSettings("v26.0","123456","","https://graph.facebook.com").configured());
         assertTrue(new MetaSettings("v26.0","123456","token","https://graph.facebook.com").configured());
+    }
+
+    @Test void readsGraphJsonDeliveredAsJavascriptContentType() throws Exception {
+        var converter = MetaAdsClient.metaJsonConverter();
+        var javascript = new MediaType("text", "javascript");
+        assertTrue(converter.canRead(Map.class, javascript));
+        assertTrue(converter.canRead(Map.class, MediaType.APPLICATION_JSON));
+        assertFalse(converter.canRead(Map.class, MediaType.TEXT_HTML));
+
+        var response = new MockHttpInputMessage(
+                "{\"id\":\"act_497208073675481\",\"account_status\":1}"
+                        .getBytes(StandardCharsets.UTF_8));
+        response.getHeaders().setContentType(javascript);
+        var body = converter.read(Map.class, response);
+        assertEquals("act_497208073675481", body.get("id"));
+        assertEquals(1, body.get("account_status"));
     }
 }

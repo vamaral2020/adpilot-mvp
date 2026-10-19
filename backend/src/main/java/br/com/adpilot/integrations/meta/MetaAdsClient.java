@@ -10,11 +10,14 @@ import java.util.Map;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.client.UnknownContentTypeException;
 
 @Component
 public class MetaAdsClient {
@@ -32,7 +35,21 @@ public class MetaAdsClient {
         var httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
         var requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(Duration.ofSeconds(20));
-        this.client = builder.baseUrl(settings.baseUrl()).requestFactory(requestFactory).build();
+        // A Graph API pode responder JSON com Content-Type text/javascript.
+        // O suporte adicional fica restrito a este RestClient, nao ao MVC da API.
+        this.client = builder.baseUrl(settings.baseUrl())
+                .requestFactory(requestFactory)
+                .configureMessageConverters(converters -> converters.withJsonConverter(metaJsonConverter()))
+                .build();
+    }
+
+    static JacksonJsonHttpMessageConverter metaJsonConverter() {
+        var converter = new JacksonJsonHttpMessageConverter();
+        converter.setSupportedMediaTypes(List.of(
+                MediaType.APPLICATION_JSON,
+                new MediaType("application", "*+json"),
+                new MediaType("text", "javascript")));
+        return converter;
     }
 
     public Map<String, Object> account() {
@@ -114,6 +131,14 @@ public class MetaAdsClient {
             throw new MetaApiException(HttpStatus.BAD_GATEWAY, "META_UPSTREAM_ERROR",
                     "Falha ao consultar a API da Meta.",
                     upstreamStatus, details.code(), details.subcode());
+        } catch (UnknownContentTypeException e) {
+            // Nao ler ou expor a resposta bruta: pode ser HTML, erro de proxy
+            // ou dados sensiveis. Incluir apenas MIME e status para diagnostico.
+            var mime = e.getContentType();
+            String type = mime.getType() + "/" + mime.getSubtype();
+            throw new MetaApiException(HttpStatus.BAD_GATEWAY, "META_UNSUPPORTED_CONTENT_TYPE",
+                    "A Meta retornou formato HTTP inesperado: " + type + ".",
+                    e.getStatusCode().value(), null, null);
         } catch (RestClientException e) {
             var failure = MetaClientFailureDetails.from(e);
             throw new MetaApiException(HttpStatus.SERVICE_UNAVAILABLE, "META_UNAVAILABLE",
