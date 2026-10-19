@@ -1,12 +1,16 @@
 package br.com.adpilot.integrations.meta;
 
+import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.StringJoiner;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -100,11 +104,7 @@ public class MetaAdsClient {
                 + (endpoint.isEmpty() ? "" : "/" + endpoint);
         try {
             var result = client.get()
-                    .uri(uri -> {
-                        uri.path(path);
-                        query.forEach(uri::queryParam);
-                        return uri.build();
-                    })
+                    .uri(buildUri(settings.baseUrl(), path, query))
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + settings.accessToken())
                     .retrieve()
                     .body(new ParameterizedTypeReference<Map<String, Object>>() {});
@@ -145,6 +145,26 @@ public class MetaAdsClient {
                     "Nao foi possivel acessar a API da Meta.",
                     failure.clientException(), failure.rootException());
         }
+    }
+
+    /**
+     * Builds an already encoded URI, bypassing Spring URI template expansion.
+     * The Meta time_range value is JSON containing { and }, which Spring
+     * otherwise treats as placeholders and throws IllegalArgumentException.
+     *
+     * Authentication stays in the Authorization header, never the URI.
+     */
+    static URI buildUri(String baseUrl, String path, Map<String, ?> query) {
+        String root = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        var url = new StringBuilder(root).append(path);
+        if (!query.isEmpty()) {
+            var params = new StringJoiner("&");
+            query.forEach((name, value) -> params.add(
+                    URLEncoder.encode(name, StandardCharsets.UTF_8) + "="
+                            + URLEncoder.encode(String.valueOf(value), StandardCharsets.UTF_8)));
+            url.append('?').append(params);
+        }
+        return URI.create(url.toString());
     }
 
     private static Map<String, Object> project(Map<?, ?> source, List<String> fields) {
