@@ -17,18 +17,20 @@ services:
       timeout: 3s
       retries: 20
   api:
-    build:
-      context: ./backend
+    build: {context: ./backend}
     restart: unless-stopped
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
       SPRING_DATASOURCE_USERNAME: ${DB_USER}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - '127.0.0.1:18080:8080'
+      ADPILOT_ADMIN_USERNAME: ${ADPILOT_ADMIN_USERNAME:?configure login}
+      ADPILOT_ADMIN_PASSWORD: ${ADPILOT_ADMIN_PASSWORD:?configure senha}
+      META_GRAPH_VERSION: ${META_GRAPH_VERSION:-v26.0}
+      META_AD_ACCOUNT_ID: ${META_AD_ACCOUNT_ID:-}
+      META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
+    ports: ['127.0.0.1:18080:8080']
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres: {condition: service_healthy}
     healthcheck:
       test: ['CMD-SHELL','wget -q -O /dev/null http://127.0.0.1:8080/actuator/health || exit 1']
       interval: 15s
@@ -36,17 +38,15 @@ services:
       retries: 12
       start_period: 30s
   web:
-    build:
-      context: ./frontend
+    build: {context: ./frontend}
     restart: unless-stopped
     environment:
       INTERNAL_API_URL: http://api:8080
+      ADPILOT_ADMIN_USERNAME: ${ADPILOT_ADMIN_USERNAME}
+      ADPILOT_ADMIN_PASSWORD: ${ADPILOT_ADMIN_PASSWORD}
       PORT: '3000'
       HOSTNAME: 0.0.0.0
-    ports:
-      - '127.0.0.1:13000:3000'
-    depends_on:
-      api:
-        condition: service_healthy
+    ports: ['127.0.0.1:13000:3000']
+    depends_on: {api: {condition: service_healthy}}
 volumes:
   adpilot_pgdata:
