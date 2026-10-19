@@ -115,8 +115,10 @@ public class MetaAdsClient {
                     "Falha ao consultar a API da Meta.",
                     upstreamStatus, details.code(), details.subcode());
         } catch (RestClientException e) {
+            var failure = MetaClientFailureDetails.from(e);
             throw new MetaApiException(HttpStatus.SERVICE_UNAVAILABLE, "META_UNAVAILABLE",
-                    "Nao foi possivel acessar a API da Meta.");
+                    "Nao foi possivel acessar a API da Meta.",
+                    failure.clientException(), failure.rootException());
         }
     }
 

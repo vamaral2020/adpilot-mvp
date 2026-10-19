@@ -10,7 +10,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class MetaApiExceptionHandler {
     @ExceptionHandler(MetaApiException.class)
     public ResponseEntity<Map<String, Object>> handle(MetaApiException exception) {
-        // Apenas campos sob nosso controle, sem payload original da Meta.
+        // Apenas campos sob nosso controle. Nao incluir payload, URLs nem mensagens
+        // das excecoes do RestClient: podem conter tokens e outros dados sensiveis.
         var response = new LinkedHashMap<String, Object>();
         response.put("code", exception.errorCode());
         response.put("message", exception.getMessage());
@@ -22,6 +23,12 @@ public class MetaApiExceptionHandler {
         }
         if (exception.metaSubcode() != null) {
             response.put("meta_error_subcode", exception.metaSubcode());
+        }
+        if (exception.clientException() != null) {
+            response.put("client_exception", exception.clientException());
+        }
+        if (exception.rootException() != null) {
+            response.put("root_exception", exception.rootException());
         }
         return ResponseEntity.status(exception.status()).body(response);
     }
