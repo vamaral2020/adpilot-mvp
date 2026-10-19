@@ -51,7 +51,7 @@ class MetaAdsClientTest {
                 "{\"id\":\"act_497208073675481\",\"account_status\":1}"
                         .getBytes(StandardCharsets.UTF_8));
         response.getHeaders().setContentType(javascript);
-        var body = converter.read(Map.class, response);
+        Map<?, ?> body = assertInstanceOf(Map.class, converter.read(Map.class, response));
         assertEquals("act_497208073675481", body.get("id"));
         assertEquals(1, body.get("account_status"));
     }
