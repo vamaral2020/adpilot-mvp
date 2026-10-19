@@ -3,6 +3,9 @@ package br.com.adpilot.integrations.meta;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.LocalDate;
+import java.net.URLDecoder;
+import java.util.LinkedHashMap;
+import org.springframework.web.util.DefaultUriBuilderFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.springframework.http.MediaType;
@@ -54,5 +57,33 @@ class MetaAdsClientTest {
         Map<?, ?> body = assertInstanceOf(Map.class, converter.read(Map.class, response));
         assertEquals("act_497208073675481", body.get("id"));
         assertEquals(1, body.get("account_status"));
+    }
+
+    @Test void encodesInsightJsonTimeRangeAsSingleQueryParameter() {
+        var query = new LinkedHashMap<String, Object>();
+        query.put("fields", "spend,impressions,clicks");
+        query.put("time_range", "{\\"since\\":\\"2026-10-12\\",\\"until\\":\\"2026-10-18\\"}");
+        query.put("limit", 25);
+
+        var factory = new DefaultUriBuilderFactory("https://graph.facebook.com");
+        var uri = MetaAdsClient.buildUri(factory.builder(),
+                "/v26.0/act_497208073675481/insights", query);
+
+        assertEquals("https", uri.getScheme());
+        assertEquals("graph.facebook.com", uri.getHost());
+        assertEquals("/v26.0/act_497208073675481/insights", uri.getPath());
+        assertFalse(uri.getRawQuery().contains("{"));
+        String decoded = URLDecoder.decode(uri.getRawQuery(), StandardCharsets.UTF_8);
+        assertTrue(decoded.contains("time_range={\\"since\\":\\"2026-10-12\\",\\"until\\":\\"2026-10-18\\"}"), decoded);
+        assertTrue(decoded.contains("fields=spend,impressions,clicks"), decoded);
+        assertTrue(decoded.contains("limit=25"), decoded);
+    }
+
+    @Test void safelyEncodesPaginationCursorAsValue() {
+        var factory = new DefaultUriBuilderFactory("https://graph.facebook.com");
+        var uri = MetaAdsClient.buildUri(factory.builder(), "/v26.0/act_497208073675481/campaigns",
+                Map.of("after", "a+b/c&d=e"));
+        assertEquals("after=a+b/c&d=e", URLDecoder.decode(uri.getRawQuery(), StandardCharsets.UTF_8));
+        assertFalse(uri.getRawQuery().contains("&d=e"));
     }
 }

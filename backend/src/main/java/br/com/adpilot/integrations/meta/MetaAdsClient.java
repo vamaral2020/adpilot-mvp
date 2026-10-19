@@ -1,5 +1,6 @@
 package br.com.adpilot.integrations.meta;
 
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -18,6 +19,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.UnknownContentTypeException;
+import org.springframework.web.util.UriBuilder;
 
 @Component
 public class MetaAdsClient {
@@ -100,11 +102,7 @@ public class MetaAdsClient {
                 + (endpoint.isEmpty() ? "" : "/" + endpoint);
         try {
             var result = client.get()
-                    .uri(uri -> {
-                        uri.path(path);
-                        query.forEach(uri::queryParam);
-                        return uri.build();
-                    })
+                    .uri(uri -> buildUri(uri, path, query))
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + settings.accessToken())
                     .retrieve()
                     .body(new ParameterizedTypeReference<Map<String, Object>>() {});
@@ -145,6 +143,23 @@ public class MetaAdsClient {
                     "Nao foi possivel acessar a API da Meta.",
                     failure.clientException(), failure.rootException());
         }
+    }
+
+    /**
+     * Insere parametros via variaveis de URI, nunca como fragmentos do template.
+     * JSON em time_range contem chaves que o UriBuilder interpretaria como
+     * placeholders e causaria IllegalArgumentException (HTTP 500).
+     * Os valores sao codificados ao expandir o template, sem double-encoding.
+     */
+    static URI buildUri(UriBuilder builder, String path, Map<String, ?> query) {
+        builder.path(path);
+        var variables = new LinkedHashMap<String, Object>();
+        query.forEach((name, value) -> {
+            String variable = "adpilotParam" + variables.size();
+            builder.queryParam(name, "{" + variable + "}");
+            variables.put(variable, value);
+        });
+        return builder.build(variables);
     }
 
     private static Map<String, Object> project(Map<?, ?> source, List<String> fields) {
