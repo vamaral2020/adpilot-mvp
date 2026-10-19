@@ -97,17 +97,23 @@ public class MetaAdsClient {
             }
             return result;
         } catch (RestClientResponseException e) {
-            int code = e.getStatusCode().value();
-            if (code == 429) {
+            int upstreamStatus = e.getStatusCode().value();
+            // Retorna apenas os identificadores numericos; nunca propaga o JSON original
+            // nem a URL da requisicao, que podem conter dados sensiveis.
+            var details = MetaGraphErrorDetails.fromJson(e.getResponseBodyAsString());
+            if (upstreamStatus == 429) {
                 throw new MetaApiException(HttpStatus.SERVICE_UNAVAILABLE, "META_RATE_LIMIT",
-                        "Limite de requisicoes da Meta atingido; tente novamente mais tarde.");
+                        "Limite de requisicoes da Meta atingido; tente novamente mais tarde.",
+                        upstreamStatus, details.code(), details.subcode());
             }
-            if (code == 401 || code == 403 || code == 400) {
+            if (upstreamStatus == 401 || upstreamStatus == 403 || upstreamStatus == 400) {
                 throw new MetaApiException(HttpStatus.BAD_GATEWAY, "META_PERMISSION_OR_REQUEST",
-                        "A Meta rejeitou a requisicao. Confira token, ads_read, conta e parametros.");
+                        "A Meta rejeitou a requisicao. Confira token, ads_read, conta e parametros.",
+                        upstreamStatus, details.code(), details.subcode());
             }
             throw new MetaApiException(HttpStatus.BAD_GATEWAY, "META_UPSTREAM_ERROR",
-                    "Falha ao consultar a API da Meta.");
+                    "Falha ao consultar a API da Meta.",
+                    upstreamStatus, details.code(), details.subcode());
         } catch (RestClientException e) {
             throw new MetaApiException(HttpStatus.SERVICE_UNAVAILABLE, "META_UNAVAILABLE",
                     "Nao foi possivel acessar a API da Meta.");
