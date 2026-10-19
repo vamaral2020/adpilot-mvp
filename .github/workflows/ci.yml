@@ -32,3 +32,36 @@ jobs:
         env:
           ADPILOT_ADMIN_USERNAME: admin
           ADPILOT_ADMIN_PASSWORD: ci-placeholder-password-123
+  smoke:
+    name: Compose startup smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure isolated test environment
+        run: |
+          cat > .env <<'ENV'
+          DB_NAME=adpilot
+          DB_USER=adpilot
+          DB_PASSWORD=ci-local-postgres-password
+          ADPILOT_ADMIN_USERNAME=admin
+          ADPILOT_ADMIN_PASSWORD=ci-local-admin-password-123
+          META_GRAPH_VERSION=v26.0
+          META_AD_ACCOUNT_ID=
+          META_ACCESS_TOKEN=
+          ENV
+      - name: Start all containers with health checks
+        run: docker compose up --build --wait --wait-timeout 240 -d
+      - name: Verify health and authenticated endpoints
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error http://127.0.0.1:18080/actuator/health | grep -q '"status":"UP"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/v1/meta/status)" = "401"
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:18080/api/v1/meta/status | grep -q 'NOT_CONFIGURED'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:13000/)" = "401"
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:13000/ | grep -q 'AdPilot'
+      - name: Collect Docker diagnostics on failure
+        if: failure()
+        run: docker compose ps && docker compose logs --tail=120
+      - name: Tear down test containers
+        if: always()
+        run: docker compose down -v --remove-orphans
