@@ -21,3 +21,11 @@ management:
       show-details: never
 server:
   port: 8080
+adpilot:
+  admin:
+    username: ${ADPILOT_ADMIN_USERNAME:}
+    password: ${ADPILOT_ADMIN_PASSWORD:}
+  meta:
+    version: ${META_GRAPH_VERSION:v26.0}
+    account-id: ${META_AD_ACCOUNT_ID:}
+    access-token: ${META_ACCESS_TOKEN:}

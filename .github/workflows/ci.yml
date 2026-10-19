@@ -1,7 +1,7 @@
 name: AdPilot CI
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/**']
   pull_request:
 jobs:
   backend:
@@ -22,11 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+        with: {node-version: '22'}
       - name: Install
         run: npm install --no-audit --no-fund
         working-directory: frontend
       - name: Build
         run: npm run build
         working-directory: frontend
+        env:
+          ADPILOT_ADMIN_USERNAME: admin
+          ADPILOT_ADMIN_PASSWORD: ci-placeholder-password-123
