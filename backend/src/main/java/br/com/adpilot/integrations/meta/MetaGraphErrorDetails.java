@@ -7,8 +7,8 @@ import java.util.regex.Pattern;
  * Nao devolve messages, URLs, tokens nem outros campos arbitrarios.
  */
 record MetaGraphErrorDetails(Integer code, Integer subcode) {
-    private static final Pattern CODE = Pattern.compile("\"code\"\\s*:\\s*([0-9]{1,9})");
-    private static final Pattern SUBCODE = Pattern.compile("\"error_subcode\"\\s*:\\s*([0-9]{1,9})");
+    private static final Pattern CODE = Pattern.compile("\"code\"\\s*:\\s*([0-9]{1,9})(?![0-9])");
+    private static final Pattern SUBCODE = Pattern.compile("\"error_subcode\"\\s*:\\s*([0-9]{1,9})(?![0-9])");
 
     static MetaGraphErrorDetails fromJson(String body) {
         if (body == null || body.isBlank()) return new MetaGraphErrorDetails(null, null);
