@@ -62,7 +62,7 @@ class MetaAdsClientTest {
     @Test void encodesInsightJsonTimeRangeAsSingleQueryParameter() {
         var query = new LinkedHashMap<String, Object>();
         query.put("fields", "spend,impressions,clicks");
-        query.put("time_range", "{\\"since\\":\\"2026-10-12\\",\\"until\\":\\"2026-10-18\\"}");
+        query.put("time_range", "{\"since\":\"2026-10-12\",\"until\":\"2026-10-18\"}");
         query.put("limit", 25);
 
         var factory = new DefaultUriBuilderFactory("https://graph.facebook.com");
@@ -74,7 +74,7 @@ class MetaAdsClientTest {
         assertEquals("/v26.0/act_497208073675481/insights", uri.getPath());
         assertFalse(uri.getRawQuery().contains("{"));
         String decoded = URLDecoder.decode(uri.getRawQuery(), StandardCharsets.UTF_8);
-        assertTrue(decoded.contains("time_range={\\"since\\":\\"2026-10-12\\",\\"until\\":\\"2026-10-18\\"}"), decoded);
+        assertTrue(decoded.contains("time_range={\"since\":\"2026-10-12\",\"until\":\"2026-10-18\"}"), decoded);
         assertTrue(decoded.contains("fields=spend,impressions,clicks"), decoded);
         assertTrue(decoded.contains("limit=25"), decoded);
     }
