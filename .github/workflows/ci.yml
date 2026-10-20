@@ -67,7 +67,7 @@ jobs:
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:13000/ | grep -q 'Painel de desempenho'
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:18080/api/v1/analytics/status | grep -q '"syncEnabled":false'
           test "$(curl -s -o /dev/null -w '%{http_code}' -u admin:ci-local-admin-password-123 -X POST http://127.0.0.1:18080/api/v1/analytics/sync)" = "409"
-          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('analytics_sync_state','analytics_sync_run','analytics_order_snapshot','analytics_meta_insight_daily','analytics_audience_definition','analytics_recommendation','analytics_recommendation_evidence')")" = "7"
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('analytics_sync_state','analytics_sync_run','analytics_order_snapshot','analytics_meta_insight_daily','analytics_audience_definition','analytics_recommendation','analytics_recommendation_evidence','analytics_meta_campaign_snapshot')")" = "8"
       - name: Collect Docker diagnostics on failure
         if: failure()
         run: docker compose ps && docker compose logs --tail=120

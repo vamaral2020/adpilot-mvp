@@ -131,6 +131,19 @@ class AnalyticsCollectorTest {
         assertEquals("BRL",result.rows().getFirst().currency());
     }
 
+    @Test void snapshotsCampaignCatalogAsObservedWithoutWritingToMeta() {
+        when(meta.campaigns(100,null)).thenReturn(new MetaPage(List.of(
+                Map.of("id","123","name","Vendas teste",
+                        "objective","OUTCOME_SALES","status","PAUSED",
+                        "effective_status","PAUSED")),null));
+        var result = collector.campaigns(now);
+        assertEquals(1,result.fetched());
+        assertEquals(LocalDate.of(2026,10,20),result.rows().getFirst().observedDay());
+        assertEquals("Vendas teste",result.rows().getFirst().name());
+        assertEquals("PAUSED",result.rows().getFirst().status());
+        assertEquals("123456",result.rows().getFirst().accountId());
+    }
+
     @Test void repeatedMetaCursorFailsRatherThanPublishingIncompleteWindow() {
         when(meta.account()).thenReturn(Map.of("currency","BRL"));
         when(meta.insights(any(),any(),eq(100),isNull())).thenReturn(

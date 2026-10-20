@@ -567,6 +567,8 @@ clientes, emails, telefones, endereços, IPs ou tokens.
   elegibilidade comercial (`paid` e não `cancelled`).
 - `analytics_meta_insight_daily`: métricas diárias por conta/campanha
   na data **da conta Meta**, separadas da data UTC do pedido.
+- `analytics_meta_campaign_snapshot`: nome, objetivo e status de campanha
+  **observados** em cada dia de coleta, sem inferir status histórico exato.
 - `analytics_audience_definition`, `analytics_recommendation` e
   `analytics_recommendation_evidence`: **estrutura de dados apenas**;
   a PR não classifica pessoas, gera recomendações nem cria públicos.
@@ -606,6 +608,8 @@ separadamente por integração, sem despejar respostas brutas dos provedores.
   adicionais para pedidos pagos não cancelados. Se o detalhe não
   resolver ou divergir, falha sem atualizar o cursor, em vez de
   fabricar pagamento pela data de criação.
+- Meta: catálogo de campanhas atualizado a cada ciclo (até 20 páginas)
+  com status/objetivo/nome observados. Não há escrita na Meta.
 - Meta: janela móvel dos **30 últimos dias completos UTC**, usando
   `time_increment=1` (as datas de Insights seguem o calendário
   da conta de anúncios). Até 20 páginas × 100 linhas. Os registros
