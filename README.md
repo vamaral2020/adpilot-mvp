@@ -63,6 +63,33 @@ Parâmetros opcionais: `pageSize` (1 a 100, padrão 100) e `maxPages`
 - O backend segue apenas o cursor `after`, não a URL `paging.next` da Meta;
   a URL pode conter dados sensíveis. Não há gravação em banco nem alteração de anúncios.
 
+## Dashboard visual (PR 005)
+
+O frontend em [http://localhost:13000](http://localhost:13000) usa consultas
+**somente no servidor Next.js** aos endpoints `/api/v1/meta/account`,
+`/campaigns` e `/insights/summary`. Token da Meta e credenciais Basic
+permanecem no Docker/servidor; não são incluídos no JavaScript do navegador.
+
+- Filtros de **7 dias / 30 dias** (dias completos em UTC) e intervalo manual
+  por data, até 90 dias. A Meta reporta os eventos no fuso da própria conta.
+- Cards de investimento, receita atribuída, ROAS, compras, impressões,
+  cliques, CTR e CPC médio, além de comparativo gráfico e tabela de campanhas.
+- Dinheiro formatado com a moeda retornada por `/meta/account`.
+- Só considera conclusivo um relatório com `complete=true`.
+  Caso `complete=false`, exibe um aviso explícito de totais parciais.
+- Falhas de API ou de datas exibem erros, sem inventar valores ou usar dados demo.
+- Compras e receita vêm da atribuição Meta; **não são pedidos confirmados**
+  nem lucro líquido. Integração com a Nuvemshop continua futura.
+
+Para executar testes do frontend localmente:
+
+```bash
+cd frontend
+npm install
+npm test
+npm run build
+```
+
 ## Escopo e segurança
 - HTTP Basic com usuário/senha de ambiente no backend e na borda do Next.js (proxy). Só para localhost.
 - Meta Graph API v26.0 por padrão, configurável via `META_GRAPH_VERSION`.
