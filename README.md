@@ -549,3 +549,87 @@ A revisão de uma nova campanha de maior duração foi registrada em
 [GitHub Issue #14](https://github.com/vamaral2020/adpilot-mvp/issues/14),
 em backlog até serem definidos campanha, orçamento e datas de início/
 encerramento. A PR 014 **não** inicia, agenda ou altera campanhas.
+
+## PR 015 — Base analítica própria e sincronização incremental (opt-in)
+
+Esta entrega funda a primeira base analítica do AdPilot para sustentar o
+motor de recomendações, mantendo a Meta Ads e a Nuvemshop **somente leitura**.
+Os registros persistidos no PostgreSQL são exclusivamente projeções
+comerciais e agregados publicitários, separados do OAuth e sem PII de
+clientes, emails, telefones, endereços, IPs ou tokens.
+
+### Banco: Flyway V3
+
+- `analytics_sync_run` e `analytics_sync_state`: trilha da execução,
+  status, erro categorizado e checkpoint por provedor/recurso/workspace.
+- `analytics_order_snapshot`: estado mais recente do pedido, valor,
+  moeda, status, `paid_at`, proveniência da data, `updated_at` e
+  elegibilidade comercial (`paid` e não `cancelled`).
+- `analytics_meta_insight_daily`: métricas diárias por conta/campanha
+  na data **da conta Meta**, separadas da data UTC do pedido.
+- `analytics_audience_definition`, `analytics_recommendation` e
+  `analytics_recommendation_evidence`: **estrutura de dados apenas**;
+  a PR não classifica pessoas, gera recomendações nem cria públicos.
+
+### Modo de operação
+
+Por padrão `ADPILOT_ANALYTICS_SYNC_ENABLED=false`, sem agendamento ativo
+e sem chamadas externas de batch. Para executar um teste **local e
+supervisionado**, defina no `.env`:
+
+```dotenv
+ADPILOT_ANALYTICS_SYNC_ENABLED=true
+ADPILOT_ANALYTICS_SYNC_CRON=0 5 */3 * * *
+```
+
+Recrie a API depois da configuração. O cron usa UTC e por padrão executa
+a cada três horas, 5 minutos após o início da hora. A sincronização
+também pode ser iniciada manualmente com Basic Auth:
+
+```bash
+curl -sS -u admin -X POST http://localhost:18080/api/v1/analytics/sync
+curl -sS -u admin http://localhost:18080/api/v1/analytics/status
+```
+
+Não passe a senha na URL ou no histórico do terminal.
+A resposta do POST informa `SUCCEEDED`, `FAILED` ou `SKIPPED`
+separadamente por integração, sem despejar respostas brutas dos provedores.
+
+### Estratégia de coleta e suas restrições
+
+- Nuvemshop: filtro oficial `updated_at_min/max`; **primeiro
+  backfill apenas dos últimos 30 dias**, depois sobreposição de 10
+  minutos no checkpoint. O limite é 100 páginas × 100 pedidos por
+  execução. Se ultrapassar, **a execução falha sem avançar o cursor**;
+  intervalos grandes serão particionados em evolução posterior.
+- Datas pagas ausentes na listagem: até 100 `GET /orders/{id}`
+  adicionais para pedidos pagos não cancelados. Se o detalhe não
+  resolver ou divergir, falha sem atualizar o cursor, em vez de
+  fabricar pagamento pela data de criação.
+- Meta: janela móvel dos **30 últimos dias completos UTC**, usando
+  `time_increment=1` (as datas de Insights seguem o calendário
+  da conta de anúncios). Até 20 páginas × 100 linhas. Os registros
+  dessa janela são substituídos atomicamente para contemplar ajustes
+  posteriores de atribuição. A regra de seleção de eventos Purchase
+  é exatamente a já usada no resumo existente; taxonomias
+  correlacionadas não são somadas.
+- Em cada fonte os dados completos, o checkpoint e a marca de sucesso
+  são persistidos **na mesma transação**. Consultas HTTP ocorrem
+  antes da transação. Uma falha registra código de erro genérico,
+  sem nomes, payloads, URL de token ou PII.
+- Não há garantia de snapshot remoto durante a paginação. Webhooks,
+  backfill histórico por janelas menores, rate-limit/backoff,
+  retenção, gestão de exclusão de dados e verificação de fuso da
+  conta Meta exigirão outras etapas antes de uso SaaS.
+
+### Segurança e limites para futuros públicos
+
+**Não há ingestão de clientes, leads ou eventos identificáveis nesta
+PR.** As tabelas de audiência e evidência permanecem sem dados até que
+tenhamos consentimentos/bases legais, políticas de retenção, controles
+de acesso, exclusão de titulares e a estratégia de integração com
+audiências da Meta aprovada. A aprovação de uma audiência jamais é
+aprovação para iniciar uma campanha ou alterar orçamento.
+
+Documentação oficial dos filtros da Nuvemshop:
+https://nuvemshop.dev/docs-api/resources/2025-03/order

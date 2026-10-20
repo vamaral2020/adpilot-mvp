@@ -39,6 +39,8 @@ services:
       NUVEMSHOP_TOKEN_URL: ${NUVEMSHOP_TOKEN_URL:-https://www.tiendanube.com/apps/authorize/token}
       NUVEMSHOP_DASHBOARD_URL: ${NUVEMSHOP_DASHBOARD_URL:-http://localhost:13000/}
       ADPILOT_NUVEMSHOP_DIAGNOSTICS_ENABLED: ${ADPILOT_NUVEMSHOP_DIAGNOSTICS_ENABLED:-false}
+      ADPILOT_ANALYTICS_SYNC_ENABLED: ${ADPILOT_ANALYTICS_SYNC_ENABLED:-false}
+      ADPILOT_ANALYTICS_SYNC_CRON: ${ADPILOT_ANALYTICS_SYNC_CRON:-0 5 */3 * * *}
     ports: ['127.0.0.1:18080:8080']
     depends_on:
       postgres: {condition: service_healthy}
