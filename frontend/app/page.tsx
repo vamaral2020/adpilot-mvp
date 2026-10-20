@@ -2,7 +2,8 @@ import Link from "next/link";
 import {
   money, number, percentage, multiplier, presetPeriod, readableDate, resolvePeriod, finite,
   type MetaAccount, type CampaignPage, type Campaign, type InsightSummary,
-  type InsightMetrics, type Period, type CommerceSummary, verifiedMer
+  type InsightMetrics, type Period, type CommerceSummary, type PaymentAudit,
+  type AuditBucket, auditMissingPercentage, verifiedMer
 } from "../lib/dashboard";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +72,7 @@ function Sidebar() {
     <div className="sidebarSection sidebarSectionSecond">GESTÃO</div>
     <nav aria-label="Módulos planejados" className="sideNav">
       <Link className="nav" href="#comercio"><Icon name="layers"/> Desempenho comercial</Link>
+      <Link className="nav" href="#auditoria"><Icon name="chart"/> Auditoria de pagamentos</Link>
       <Link className="nav" href="#integracoes"><Icon name="settings"/> Integrações</Link>
     </nav>
     <div className="sidebarFooter">
@@ -279,6 +281,75 @@ function CommercePanel({ summary, error, currency }: {
   </section>;
 }
 
+function AuditBuckets({ heading, rows }: { heading: string; rows: AuditBucket[] }) {
+  return <div className="auditGroup">
+    <h3>{heading}</h3>
+    {rows.length ? <ul>
+      {rows.map(item => <li key={item.label}>
+        <span>{item.label === "unknown" ? "Data indisponível" :
+          item.label === "no_app_id" ? "Sem app_id" :
+          item.label === "has_app_id" ? "Com app_id" :
+          item.label === "not-provided" ? "Gateway não informado" :
+          item.label === "missing" ? "Não informado" :
+          item.label === "other" ? "Outro / não classificado" :
+          item.label}</span>
+        <strong>{number(item.count)}</strong>
+      </li>)}
+    </ul> : <p className="auditNoRows">Nenhum registro nesta categoria.</p>}
+  </div>;
+}
+
+function PaymentAuditPanel({ audit, error }: { audit?: PaymentAudit; error?: string }) {
+  const missing = audit ? audit.paidWithoutDate + audit.paidWithInvalidDate : 0;
+  const pct = auditMissingPercentage(audit);
+  return <section className="auditPanel" id="auditoria" aria-labelledby="audit-heading">
+    <div className="panelHeader">
+      <div>
+        <div className="smallEyebrow">QUALIDADE DOS DADOS · NUVEMSHOP</div>
+        <h2 id="audit-heading">Auditoria de pagamentos</h2>
+        <p>Diagnóstico agregado de toda a listagem de pedidos, independente do filtro de datas acima.</p>
+      </div>
+      <span className="panelTag">{audit?.complete ? "Listagem completa" : "Diagnóstico de leitura"}</span>
+    </div>
+    {!audit ? <div className="commerceEmpty" role="status">
+      {error ?? "Não foi possível consultar a auditoria."}
+    </div> : <>
+      {!audit.complete && <div className="alertBanner caution" role="status">
+        <strong>Leitura parcial</strong>
+        <span>A Nuvemshop não retornou a lista integral de pedidos nos limites consultados.
+          As contagens abaixo são apenas da amostra lida.</span>
+      </div>}
+      <div className="auditStats">
+        <div><span>Pedidos consultados</span><strong>{number(audit.uniqueOrders)}</strong>
+          <small>{audit.pagesFetched} página(s) consultada(s)</small></div>
+        <div><span>Pagos identificados</span><strong>{number(audit.paidOrders)}</strong>
+          <small>Independentemente do período</small></div>
+        <div><span>Pagos sem data válida</span><strong>{number(missing)}</strong>
+          <small>{number(audit.paidWithoutDate)} ausentes · {number(audit.paidWithInvalidDate)} inválidas</small></div>
+        <div><span>Proporção sem data</span><strong>{pct === null ? "—" : percentage(pct)}</strong>
+          <small>Dos pedidos pagos; só com paginação completa</small></div>
+      </div>
+      {missing > 0 && <p className="auditWarning">
+        Não é possível determinar o dia do pagamento desses pedidos. A data de criação
+        é apenas um indício de origem e <strong>não substitui paid_at</strong>.
+      </p>}
+      <div className="auditGroups">
+        <AuditBuckets heading="Mês de criação (UTC) dos pagos sem data" rows={audit.undatedByCreationMonth}/>
+        <AuditBuckets heading="Tipo de gateway" rows={audit.undatedByGateway}/>
+        <AuditBuckets heading="Origem do pedido" rows={audit.undatedByStorefront}/>
+        <AuditBuckets heading="Associação com aplicativo" rows={audit.undatedByAppAssociation}/>
+        <AuditBuckets heading="Status do pedido" rows={audit.undatedByOrderStatus}/>
+        <AuditBuckets heading="Status de pagamento (todos)" rows={audit.paymentStatuses}/>
+      </div>
+      <p className="auditNote">
+        Categorias são indícios para investigação, não evidências de importação,
+        confirmação manual ou gateway específico. Nenhuma transação financeira foi consultada
+        e nenhum pedido foi modificado. O MER permanece indisponível se o período não puder ser comprovado.
+      </p>
+    </>}
+  </section>;
+}
+
 export default async function Home({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
   const since = typeof params?.since === "string" ? params.since : undefined;
@@ -286,7 +357,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
   const period = resolvePeriod(since, until);
 
   const query = new URLSearchParams({ since: period.since, until: period.until });
-  const [account, listing, summary, shop, commerce] = await Promise.all([
+  const [account, listing, summary, shop, commerce, audit] = await Promise.all([
     readApi<MetaAccount>("/api/v1/meta/account"),
     readApi<CampaignPage>("/api/v1/meta/campaigns?limit=100"),
     period.error ? Promise.resolve({ error: period.error } as Load<InsightSummary>) :
@@ -294,6 +365,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
     readApi<NuvemshopStatus>("/api/v1/nuvemshop/status"),
     period.error ? Promise.resolve({ error: period.error } as Load<CommerceSummary>) :
       readApi<CommerceSummary>("/api/v1/commerce/summary?" + query.toString()),
+    readApi<PaymentAudit>("/api/v1/nuvemshop/payments/audit"),
   ]);
   const data = summary.data;
   const currency = account.data?.currency ?? "BRL";
@@ -370,6 +442,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
           <div className="emptyPanel">Corrija a integração ou o filtro de datas para consultar as campanhas.</div></section>}
 
         <CommercePanel summary={commerce.data} error={commerce.error} currency={currency}/>
+        {shop.data?.status === "CONNECTED" &&
+          <PaymentAuditPanel audit={audit.data} error={audit.error}/>}
 
         <section className="shopPanel" id="integracoes" aria-labelledby="shop-heading">
           <div className="shopHeader">

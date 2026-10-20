@@ -35,6 +35,34 @@ export type Campaign = {
   daily_budget?: string;
 };
 
+export type PaymentAudit = {
+  complete: boolean;
+  pagesFetched: number;
+  recordsFetched: number;
+  uniqueOrders: number;
+  upstreamTotalCount: number | null;
+  duplicateRecords: number;
+  paidOrders: number;
+  paidWithValidDate: number;
+  paidWithoutDate: number;
+  paidWithInvalidDate: number;
+  paymentStatuses: AuditBucket[];
+  undatedByCreationMonth: AuditBucket[];
+  undatedByGateway: AuditBucket[];
+  undatedByStorefront: AuditBucket[];
+  undatedByAppAssociation: AuditBucket[];
+  undatedByOrderStatus: AuditBucket[];
+  datedPaymentsByMonth: AuditBucket[];
+  warnings: string[];
+};
+export type AuditBucket = { label: string; count: number };
+
+/** Coverage is only a store-wide statistic if all pages were fetched. */
+export function auditMissingPercentage(audit?: PaymentAudit): number | null {
+  if (!audit?.complete || audit.paidOrders === 0) return null;
+  return (audit.paidWithoutDate + audit.paidWithInvalidDate) / audit.paidOrders * 100;
+}
+
 export type CommerceSummary = {
   since: string;
   until: string;
