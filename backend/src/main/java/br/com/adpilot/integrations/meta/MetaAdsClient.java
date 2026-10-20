@@ -183,9 +183,12 @@ public class MetaAdsClient {
             }
         }
         String after = null;
+        // Cursor so representa uma proxima pagina quando a Meta realmente
+        // fornece paging.next. Cursors.after sozinho pode existir na ultima pagina.
         if (response.get("paging") instanceof Map<?, ?> paging
+                && paging.get("next") instanceof String next && !next.isBlank()
                 && paging.get("cursors") instanceof Map<?, ?> cursors
-                && cursors.get("after") instanceof String cursor) {
+                && cursors.get("after") instanceof String cursor && !cursor.isBlank()) {
             after = cursor;
         }
         // Nunca retornar "paging.next": essa URL pode conter access_token.

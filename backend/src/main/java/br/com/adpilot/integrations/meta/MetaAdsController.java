@@ -13,10 +13,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class MetaAdsController {
     private final MetaSettings settings;
     private final MetaAdsClient client;
+    private final MetaInsightsSummaryService summaryService;
 
-    public MetaAdsController(MetaSettings settings, MetaAdsClient client) {
+    public MetaAdsController(MetaSettings settings, MetaAdsClient client,
+                             MetaInsightsSummaryService summaryService) {
         this.settings = settings;
         this.client = client;
+        this.summaryService = summaryService;
     }
 
     @GetMapping("/status")
@@ -43,5 +46,14 @@ public class MetaAdsController {
             @RequestParam(defaultValue = "25") int limit,
             @RequestParam(required = false) String after) {
         return client.insights(since, until, limit, after);
+    }
+
+    @GetMapping("/insights/summary")
+    public MetaInsightsSummary insightsSummary(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate since,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate until,
+            @RequestParam(defaultValue = "100") int pageSize,
+            @RequestParam(defaultValue = "20") int maxPages) {
+        return summaryService.summary(since, until, pageSize, maxPages);
     }
 }
