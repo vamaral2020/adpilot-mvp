@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  presetPeriod, resolvePeriod, money, number, percentage, multiplier, finite, readableDate, verifiedMer
+  presetPeriod, resolvePeriod, money, number, percentage, multiplier, finite, readableDate, verifiedMer, auditMissingPercentage
 } from "../lib/dashboard.ts";
 
 const today = new Date("2026-10-20T12:00:00.000Z");
@@ -76,4 +76,14 @@ test("MER never appears when paid orders have unknown dates", () => {
     datedPaidOrders: 3, datedPaidRevenue: 500,
   };
   assert.equal(verifiedMer(partial), null);
+});
+
+test("payment audit coverage distinguishes paid orders from all orders", () => {
+  const audit = {
+    complete: true, paidOrders: 75, paidWithoutDate: 40, paidWithInvalidDate: 5,
+  };
+  assert.equal(auditMissingPercentage(audit), 60);
+  assert.equal(auditMissingPercentage({ ...audit, complete: false }), null);
+  assert.equal(auditMissingPercentage({ ...audit, paidOrders: 0 }), null);
+  assert.equal(auditMissingPercentage(undefined), null);
 });

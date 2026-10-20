@@ -261,3 +261,62 @@ datas nem transformar receita potencial em resultado definitivo. A Meta
 continua apresentando seu próprio gasto e ROAS atribuído separadamente.
 A investigação da origem dos `paid_at` ausentes e eventual reconciliação
 de transações ficam para uma etapa específica.
+
+## Auditoria de pagamentos Nuvemshop — PR 010
+
+A PR 009 revelou pagamentos com `payment_status=paid` mas `paid_at`
+ausente ou inválido. A auditoria **somente leitura e sem PII** permite
+investigar o padrão sem criar datas falsas nem habilitar permissões de escrita.
+
+```bash
+# Curl pede a senha local de forma interativa; não inclua a senha na URL.
+curl -sS -u admin 'http://localhost:18080/api/v1/nuvemshop/payments/audit'
+```
+
+Parâmetros: `pageSize` (1 a 100, padrão 100), `maxPages` (1 a 100,
+padrão 20). O endpoint varre todos os pedidos disponibilizados pela listagem
+dentro desses limites — **não é filtrado por `since/until` do dashboard**.
+Os contadores `complete`, `pagesFetched`, `recordsFetched`,
+`uniqueOrders`, `upstreamTotalCount` e `duplicateRecords`
+expõem a integridade da leitura. Sem paginação completa, as contagens
+referem-se apenas à amostra consultada.
+
+O diagnóstico exibe **apenas contagens** agregadas:
+- `paidOrders`, `paidWithValidDate`, `paidWithoutDate` e
+  `paidWithInvalidDate`: cobertura de `paid_at` dos pedidos pagos.
+- `paymentStatuses`: distribuição dos status de pagamento (todos os pedidos).
+- `undatedByCreationMonth`: mês de criação (UTC), como referência de época,
+  **nunca** como data do pagamento.
+- `undatedByGateway`, `undatedByStorefront`,
+  `undatedByAppAssociation`, `undatedByOrderStatus`: categorias
+  de origem para *investigação*, não causa provada.
+- `datedPaymentsByMonth`: mês UTC de pagamentos com `paid_at` válido.
+- `warnings`: qualidade do dado e limitações de integridade.
+
+O backend solicita somente `id,payment_status,paid_at,created_at,updated_at,
+status,shipping_status,gateway,storefront,app_id`, realiza deduplicação dos IDs
+em memória e **nunca os envia ao cliente**. A resposta não inclui IDs, nomes,
+endereços, produtos, valores, detalhes de transações ou dados de pagamento.
+Strings desconhecidas em status, origem ou gateway são agrupadas em `other`
+sem ecoar conteúdo de terceiros. O endpoint exige HTTP Basic e cabeçalho
+`Cache-Control: no-store`. Não há migration nem armazenamento dos pedidos.
+
+### Cautelas na interpretação
+
+- `paid_at` e `created_at` têm significados distintos. O segundo não pode
+  ser usado para recuperar o primeiro.
+- `gateway=offline`, `storefront=api` e `app_id` preenchido podem
+  sugerir caminhos de investigação, mas **não demonstram** importação,
+  confirmação manual ou origem real do pagamento.
+- A documentação oficial lista transações e eventos, mas a API de transações
+  é reservada a aplicativos de pagamento. Portanto, com os escopos atuais
+  `read_products,read_orders`, **não presumimos acesso a histórico transacional**.
+- A API externa não oferece um snapshot consistente entre páginas. Contagens
+  podem variar enquanto novos pedidos são criados ou alterados.
+- O MER da PR 009 permanece `null` enquanto a data dos pedidos pagos não
+  permitir fechar com segurança o intervalo financeiro.
+
+Referências do provedor:
+https://nuvemshop.dev/docs-api/resources/2025-03/order
+https://tiendanube.github.io/api-documentation/v1/resources/transaction
+

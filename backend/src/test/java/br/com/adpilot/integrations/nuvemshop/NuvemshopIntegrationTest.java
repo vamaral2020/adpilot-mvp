@@ -158,6 +158,59 @@ class NuvemshopIntegrationTest {
         }
     }
 
+    @Test void auditOrderProjectionIsReadOnlyAndNeverIncludesCustomerOrCardData()
+            throws Exception {
+        var seenUri = new AtomicReference<String>();
+        var seenMethod = new AtomicReference<String>();
+        var server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        server.createContext("/", exchange -> {
+            seenUri.set(exchange.getRequestURI().toString());
+            seenMethod.set(exchange.getRequestMethod());
+            assertEquals("Bearer test-bearer", exchange.getRequestHeaders().getFirst("Authorization"));
+            String body = """
+                    [{"id":99,"payment_status":"paid","paid_at":null,
+                      "created_at":"2026-10-17T15:00:00Z",
+                      "gateway":"offline","storefront":"api","app_id":1001,
+                      "status":"open","shipping_status":"unpacked",
+                      "customer":{"email":"must-not-leak@example.com"},
+                      "payment_details":{"card":"do-not-return-card-data"},
+                      "total":"9999.99"}]
+                    """;
+            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.getResponseHeaders().set("x-total-count", "1");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (var out = exchange.getResponseBody()) { out.write(bytes); }
+        });
+        server.start();
+        try {
+            var repo = mock(NuvemshopRepository.class);
+            var props = settings("http://127.0.0.1:" + server.getAddress().getPort(),
+                    "https://www.nuvemshop.com.br");
+            var crypto = new NuvemshopCrypto(props);
+            when(repo.installation()).thenReturn(Optional.of(
+                    new NuvemshopRepository.Installation("789", "read_orders",
+                            crypto.encrypt("test-bearer"), java.time.Instant.now())));
+            var client = new NuvemshopClient(props, repo, crypto, RestClient.builder());
+            var result = client.paymentAuditOrders(1, 30);
+            assertEquals("GET", seenMethod.get());
+            assertTrue(seenUri.get().startsWith("/2025-03/789/orders?"));
+            assertTrue(seenUri.get().contains("fields="));
+            assertFalse(seenUri.get().contains("customer"));
+            assertFalse(seenUri.get().contains("payment_details"));
+            assertFalse(seenUri.get().contains("total"));
+            assertEquals(1, result.data().size());
+            assertEquals("offline", result.data().getFirst().get("gateway"));
+            assertNull(result.data().getFirst().get("paid_at"));
+            var serialized = result.toString();
+            assertFalse(serialized.contains("must-not-leak@example.com"));
+            assertFalse(serialized.contains("do-not-return-card-data"));
+            assertFalse(serialized.contains("9999.99"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
     @Test void refusesReadWithoutInstallationAndRejectsInvalidPages() {
         var repo = mock(NuvemshopRepository.class);
         when(repo.installation()).thenReturn(Optional.empty());

@@ -95,3 +95,25 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
 .commerceEmpty p{font-size:11px;color:#7086a2;margin:8px 0 0}
 @media(max-width:1100px){.commerceDetails{grid-template-columns:1fr}}
 @media(max-width:700px){.commercePanel{padding:18px}.commerceBars{gap:4px}.commerceDay small{font-size:8px}.commerceMethod{padding:16px}}
+
+/* PR 010: aggregated, privacy-safe payment coverage audit. */
+.auditPanel{margin-top:20px;background:var(--panel);border:1px solid #2c4057;border-radius:14px;padding:24px;scroll-margin-top:16px}
+.auditPanel .panelHeader{flex-wrap:wrap}
+.auditStats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:22px 0}
+.auditStats>div{background:#152337;border:1px solid #31455d;border-radius:11px;padding:16px;display:flex;flex-direction:column;gap:9px;min-width:0}
+.auditStats span{color:#a2b8d2;font-size:11px}
+.auditStats strong{color:#e6f0ff;font-size:23px;font-variant-numeric:tabular-nums}
+.auditStats small{color:#8199b7;font-size:10px;line-height:1.5}
+.auditWarning{border:1px solid #765538;background:#382b20;color:#f4d6ac;border-radius:9px;padding:13px 15px;font-size:12px;line-height:1.6}
+.auditGroups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:18px}
+.auditGroup{border:1px solid #2b3e55;border-radius:10px;padding:16px;background:#111e2f;min-width:0}
+.auditGroup h3{font-size:12px;line-height:1.5;color:#c8d9ef;margin:0 0 13px}
+.auditGroup ul{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:9px}
+.auditGroup li{display:flex;gap:12px;justify-content:space-between;color:#9db0c8;font-size:12px;border-top:1px solid #25374e;padding-top:8px}
+.auditGroup li span{overflow-wrap:anywhere}
+.auditGroup li strong{color:#e1ecfa;font-variant-numeric:tabular-nums}
+.auditNoRows,.auditNote{font-size:11px;color:#829ab8;line-height:1.7}
+.auditNote{margin:20px 0 0}
+@media(max-width:1200px){.auditGroups{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:800px){.auditStats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:550px){.auditPanel{padding:18px}.auditStats,.auditGroups{grid-template-columns:1fr}}
