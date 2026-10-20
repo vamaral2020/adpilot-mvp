@@ -1,6 +1,8 @@
 package br.com.adpilot.integrations.nuvemshop;
 
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -15,6 +17,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -38,7 +42,10 @@ public class NuvemshopAuthService {
         this.settings = settings;
         this.repository = repository;
         this.crypto = crypto;
-        this.client = builder.build();
+        var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        var factory = new JdkClientHttpRequestFactory(http);
+        factory.setReadTimeout(Duration.ofSeconds(20));
+        this.client = builder.requestFactory(factory).build();
     }
 
     public Status status() {
@@ -78,6 +85,7 @@ public class NuvemshopAuthService {
         LOG.info("NUVEMSHOP_OAUTH_CALLBACK state_ref={}", stateRef(digest));
         repository.consumeState(digest);
         LOG.info("NUVEMSHOP_OAUTH_STATE_CONSUMED state_ref={}", stateRef(digest));
+        LOG.info("NUVEMSHOP_OAUTH_TOKEN_EXCHANGE_START state_ref={}", stateRef(digest));
         Map<String, Object> payload = Map.of(
                 "client_id", settings.clientId(),
                 "client_secret", settings.clientSecret(),
@@ -92,6 +100,8 @@ public class NuvemshopAuthService {
                     .retrieve()
                     .body(new ParameterizedTypeReference<Map<String, Object>>() {});
         } catch (RestClientResponseException e) {
+            LOG.warn("NUVEMSHOP_OAUTH_TOKEN_EXCHANGE_FAILED state_ref={} category=http_rejected upstream_status={}",
+                    stateRef(digest), e.getStatusCode().value());
             throw new NuvemshopException(HttpStatus.BAD_GATEWAY, "NUVEMSHOP_OAUTH_REJECTED",
                     "A Nuvemshop rejeitou a troca do codigo de autorizacao.",
                     e.getStatusCode().value());
@@ -100,6 +110,8 @@ public class NuvemshopAuthService {
             // Never include the response body: it may contain credentials or the OAuth code.
             var mime = e.getContentType();
             String type = mime.getType() + "/" + mime.getSubtype();
+            LOG.warn("NUVEMSHOP_OAUTH_TOKEN_EXCHANGE_FAILED state_ref={} category=unexpected_content_type upstream_status={} content_type={}",
+                    stateRef(digest), e.getStatusCode().value(), type);
             throw new NuvemshopException(HttpStatus.BAD_GATEWAY, "NUVEMSHOP_OAUTH_CONTENT_TYPE",
                     "Resposta OAuth em formato inesperado: " + type + ".",
                     e.getStatusCode().value());
@@ -110,22 +122,43 @@ public class NuvemshopAuthService {
                     && root.getCause() != root; depth++) {
                 root = root.getCause();
             }
+            LOG.warn("NUVEMSHOP_OAUTH_TOKEN_EXCHANGE_FAILED state_ref={} category=client_exception exception={} root={}",
+                    stateRef(digest), e.getClass().getSimpleName(), root.getClass().getSimpleName());
             throw new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE, "NUVEMSHOP_OAUTH_UNAVAILABLE",
                     "Nao foi possivel concluir a autorizacao com a Nuvemshop.",
                     e.getClass().getSimpleName(), root.getClass().getSimpleName());
         }
-        if (response == null) throw invalidTokenResponse();
+        if (response == null) {
+            LOG.warn("NUVEMSHOP_OAUTH_TOKEN_EXCHANGE_FAILED state_ref={} category=empty_response",
+                    stateRef(digest));
+            throw invalidTokenResponse();
+        }
+        LOG.info("NUVEMSHOP_OAUTH_TOKEN_RESPONSE_RECEIVED state_ref={}", stateRef(digest));
         Object userId = response.get("user_id") == null ? response.get("store_id") : response.get("user_id");
         String storeId = userId == null ? "" : userId.toString();
         String token = response.get("access_token") instanceof String t ? t : "";
         String scope = response.get("scope") instanceof String s ? s : "";
-        if (!storeId.matches("[0-9]{1,40}") || token.isBlank()
-                || !scopeContains(scope, "read_products") || !scopeContains(scope, "read_orders")
-                || !onlyReadScopes(scope)) {
+        boolean validStore = storeId.matches("[0-9]{1,40}");
+        boolean hasProducts = scopeContains(scope, "read_products");
+        boolean hasOrders = scopeContains(scope, "read_orders");
+        boolean readOnly = onlyReadScopes(scope);
+        if (!validStore || token.isBlank() || !hasProducts || !hasOrders || !readOnly) {
+            // No scope values, user_id, access_token or response bodies in logs.
+            LOG.warn("NUVEMSHOP_OAUTH_TOKEN_REJECTED state_ref={} valid_store_id={} has_token={} read_products={} read_orders={} read_only={}",
+                    stateRef(digest), validStore, !token.isBlank(), hasProducts, hasOrders, readOnly);
             throw invalidTokenResponse();
         }
         // Store only encrypted credentials; OAuth scopes validated for read-only use.
-        repository.saveInstallation(storeId, scope, crypto.encrypt(token));
+        try {
+            repository.saveInstallation(storeId, scope, crypto.encrypt(token));
+            LOG.info("NUVEMSHOP_OAUTH_CONNECTED state_ref={}", stateRef(digest));
+        } catch (DataAccessException e) {
+            LOG.warn("NUVEMSHOP_OAUTH_PERSISTENCE_FAILED state_ref={} exception={}",
+                    stateRef(digest), e.getClass().getSimpleName());
+            throw new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "NUVEMSHOP_OAUTH_PERSISTENCE_FAILED",
+                    "Nao foi possivel registrar a conexao da loja no banco.");
+        }
     }
 
     private static boolean scopeContains(String scope, String value) {
