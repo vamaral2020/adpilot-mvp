@@ -77,6 +77,13 @@ class AnalyticsCollectorTest {
                 eq(now.minusSeconds(300)),eq(1),eq(100));
     }
 
+    @Test void truncatedProviderTotalDoesNotAdvanceCheckpointEvenWithoutNextLink() {
+        when(shop.ordersUpdatedBetween(any(),any(),eq(1),eq(100)))
+                .thenReturn(new NuvemshopPage(List.of(),1,100,5L,false));
+        assertEquals("SHOP_TOTAL_INCOMPLETE",
+                assertThrows(IllegalStateException.class,()->collector.orders(null,now)).getMessage());
+    }
+
     @Test void missingDetailMustNotProduceCompleteOrderWindow() {
         when(shop.ordersUpdatedBetween(any(),any(),eq(1),eq(100))).thenReturn(page(
                 List.of(order(10,"open","paid",null,"2026-10-18T11:00:00+00:00")),false));
