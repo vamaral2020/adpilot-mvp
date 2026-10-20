@@ -258,6 +258,52 @@ class NuvemshopIntegrationTest {
         }
     }
 
+    @Test void paidDetailsUsesSafeProjectionAndNeverReturnsPrivateFields()
+            throws Exception {
+        var seenUri = new AtomicReference<String>();
+        var server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        server.createContext("/", exchange -> {
+            assertEquals("GET", exchange.getRequestMethod());
+            assertEquals("Bearer test-bearer", exchange.getRequestHeaders().getFirst("Authorization"));
+            seenUri.set(exchange.getRequestURI().toString());
+            String body = """
+                    {"id":2090191184,"number":158,"status":"open","payment_status":"paid",
+                     "paid_at":"2026-10-09T02:06:55+0000","total":"200.00","currency":"BRL",
+                     "customer":{"email":"never-leak@example.com"},
+                     "payment_details":{"token":"secret-payment-token"},
+                     "products":[{"name":"Sensitive"}]}
+                    """;
+            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (var out = exchange.getResponseBody()) { out.write(bytes); }
+        });
+        server.start();
+        try {
+            var repo = mock(NuvemshopRepository.class);
+            var props = settings("http://127.0.0.1:" + server.getAddress().getPort(),
+                    "https://www.nuvemshop.com.br");
+            var crypto = new NuvemshopCrypto(props);
+            when(repo.installation()).thenReturn(Optional.of(
+                    new NuvemshopRepository.Installation("789", "read_orders",
+                            crypto.encrypt("test-bearer"), java.time.Instant.now())));
+            var client = new NuvemshopClient(props, repo, crypto, RestClient.builder());
+            var detail = client.paidOrderDetails(2090191184L);
+            assertTrue(seenUri.get().startsWith("/2025-03/789/orders/2090191184?fields="));
+            assertFalse(seenUri.get().contains("customer"));
+            assertFalse(seenUri.get().contains("payment_details"));
+            assertEquals("2026-10-09T02:06:55+0000", detail.get("paid_at"));
+            assertEquals("200.00", detail.get("total"));
+            assertEquals("paid", detail.get("payment_status"));
+            assertFalse(detail.toString().contains("never-leak@example.com"));
+            assertFalse(detail.toString().contains("secret-payment-token"));
+            assertFalse(detail.toString().contains("Sensitive"));
+            assertEquals(7, detail.size());
+        } finally {
+            server.stop(0);
+        }
+    }
+
     @Test void refusesReadWithoutInstallationAndRejectsInvalidPages() {
         var repo = mock(NuvemshopRepository.class);
         when(repo.installation()).thenReturn(Optional.empty());
