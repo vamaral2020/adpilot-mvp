@@ -120,6 +120,8 @@ aleatórios, é persistido somente como hash SHA-256 e deve ser consumido uma
 4. Executar `docker compose up -d --build api`. Os endpoints protegidos
    exigem a autenticação Basic atual do AdPilot.
 
+Para OAuth, o endpoint oficial brasileiro usa `https://www.nuvemshop.com.br`; não confunda com a URL do callback, que continua sendo o domínio temporário do Cloudflare. Caso `NUVEMSHOP_OAUTH_BASE` esteja definido no `.env`, seu valor sobrescreve o padrão; utilize `https://www.nuvemshop.com.br`. URLs OAuth oficiais documentadas: `https://www.nuvemshop.com.br` e `https://www.tiendanube.com`.
+
 ### Conectar loja
 
 ```bash
