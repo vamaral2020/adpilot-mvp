@@ -48,7 +48,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
   const history = result.data;
   const media = history ? sums(history.meta.map(r => ({ currency: r.currency, value: Number(r.spend) }))) : null;
   const store = history ? sums(history.store.map(r => ({ currency: r.currency, value: Number(r.paidRevenue) }))) : null;
-  const compare = media && store && media.currency === store.currency && media.value > 0
+  const compare = history?.complete && media && store && media.currency === store.currency && media.value > 0
     ? store.value / media.value : null;
   const seven = presetPeriod(7), thirty = presetPeriod(30);
   return <main className="historyShell">
@@ -73,7 +73,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
       <div className="historyKpis">
         <article className="historyCard"><span>Investimento Meta armazenado</span><strong>{media ? money(media.value, media.currency) : "—"}</strong><small>Moeda única exigida</small></article>
         <article className="historyCard"><span>Receita paga identificada</span><strong>{store ? money(store.value, store.currency) : "—"}</strong><small>Pedidos pagos e não cancelados</small></article>
-        <article className="historyCard"><span>MER indicativo (não conclusivo)</span><strong>{compare === null ? "—" : number(compare, 2) + "x"}</strong><small>Loja / mídia · não mede atribuição</small></article>
+        <article className="historyCard"><span>MER auditado</span><strong>{compare === null ? "—" : number(compare, 2) + "x"}</strong><small>Oculto enquanto a cobertura não estiver comprovada</small></article>
       </div>
       <div className="historyGrid">
         <Trend title="Investimento diário Meta" rows={history.meta.map(r => ({ date: r.date + " / " + r.currency, value: Number(r.spend) }))}
