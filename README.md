@@ -185,3 +185,55 @@ disponibilização SaaS pública.
 - Requer permissão `ads_read` e acesso à conta indicada.
 
 **Não implantar na internet ainda:** Basic exige HTTPS fora de localhost. A futura versão SaaS deverá adotar sessões/OIDC, acesso por workspace, gestão de segredos e autorização mais granular.
+
+## Resumo comercial — PR 008
+
+O endpoint somente leitura abaixo consolida **pedidos pagos da Nuvemshop** e
+**investimento/ROAS atribuído da Meta Ads**, sem conciliar pedidos a campanhas:
+
+```bash
+curl -u admin 'http://localhost:18080/api/v1/commerce/summary?since=2026-10-17&until=2026-10-19'
+```
+
+- `since` e `until`: datas inclusivas, intervalo máximo de 90 dias; validação
+  segue o filtro de Insights da Meta.
+- `pageSize`: 1–100 (padrão 100); `maxPages`: 1–100 (padrão 20);
+  API da Nuvemshop impõe limite de 10.000 pedidos por pesquisa.
+- `paidOrders`: pedidos únicos com `payment_status=paid` cujo `paid_at`
+  pertence ao período em **UTC**. Pedidos pendentes não são receita confirmada.
+- `paidRevenue`: soma de `total` dos pedidos pagos da loja (inclui os
+  componentes já refletidos no total do pedido e **não equivale a lucro**).
+  `averageTicket`: `paidRevenue / paidOrders` (nulo se não há pagos).
+- `daily`: série de receita e quantidade por dia UTC de `paid_at`.
+- `mediaSpend`: gasto retornado pelos Insights consolidados da Meta;
+  `metaAttributedRevenue` e `metaRoas`: **atribuição da Meta**, não
+  pagamentos efetivos reconciliados.
+- `mer`: `paidRevenue / mediaSpend` da mesma janela. Mede a relação entre
+  o **faturamento pago total da loja** e investimento em mídia, não a atribuição
+  causal das vendas aos anúncios. É nulo se o investimento for zero, as moedas
+  diferirem ou os dados das fontes estiverem incompletos.
+- `ordersComplete`, `metaComplete`, `complete`: indicadores explícitos
+  de integridade. Se a paginação da loja não terminar, `paidOrders`,
+  `paidRevenue`, `averageTicket` e `daily` são omitidos/nulos em vez de
+  apresentar totais parciais como definitivos. Se a Meta for parcial,
+  `mediaSpend`, `metaAttributedRevenue` e `metaRoas` ficam nulos.
+- `warnings`: códigos de cautela `ORDERS_INCOMPLETE`, `META_INCOMPLETE`,
+  `CURRENCY_MISMATCH`, `CURRENCY_NOT_ESTABLISHED` e
+  `REPORTING_TIMEZONE_MAY_DIFFER` (os Insights Meta usam o dia da conta,
+  enquanto os pagamentos são agregados em UTC).
+
+O endpoint é protegido por HTTP Basic, não emite PII de clientes e não altera
+pedidos ou produtos. A implementação consulta as fontes sob demanda, sem
+armazenar dados comerciais adicionais e sem migrations. Seu custo cresce com
+a quantidade de páginas; consultas históricas extensas e sincronização
+incremental com filtros server-side são trabalho futuro. Pedidos criados/
+atualizados durante a paginação podem mudar o conjunto de resultados; neste
+MVP, IDs duplicados são ignorados e inconsistências com o total informado
+sinalizam dados incompletos, mas não há snapshot transacional externo.
+
+**Importante:** a consulta de MER faz uma agregação adicional de Insights e
+de conta Meta além da visão de campanhas do dashboard. Em volumes maiores,
+será necessário compartilhar ou manter cache seguro de dados com limites de
+frescura definidos. O fuso da loja, devoluções, cancelamentos posteriores,
+taxas e CMV ainda exigirão um modelo financeiro mais refinado.
+

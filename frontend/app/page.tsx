@@ -2,7 +2,7 @@ import Link from "next/link";
 import {
   money, number, percentage, multiplier, presetPeriod, readableDate, resolvePeriod, finite,
   type MetaAccount, type CampaignPage, type Campaign, type InsightSummary,
-  type InsightMetrics, type Period
+  type InsightMetrics, type Period, type CommerceSummary, verifiedMer
 } from "../lib/dashboard";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +31,7 @@ async function readApi<T>(path: string): Promise<Load<T>> {
     });
     if (!response.ok) {
       const label = response.status === 503 ? "Serviço indisponível" :
-        response.status === 502 ? "Erro da integração com a Meta" :
+        response.status === 502 ? "Erro na integração externa" :
         response.status === 401 || response.status === 403 ? "Acesso negado pela API" :
         "Falha na consulta";
       return { error: label + " (HTTP " + response.status + ")." };
@@ -70,7 +70,7 @@ function Sidebar() {
     </nav>
     <div className="sidebarSection sidebarSectionSecond">GESTÃO</div>
     <nav aria-label="Módulos planejados" className="sideNav">
-      <span className="nav disabled"><Icon name="layers"/> Pedidos e produtos</span>
+      <Link className="nav" href="#comercio"><Icon name="layers"/> Desempenho comercial</Link>
       <Link className="nav" href="#integracoes"><Icon name="settings"/> Integrações</Link>
     </nav>
     <div className="sidebarFooter">
@@ -188,6 +188,91 @@ function CampaignTable({ summary, listing, currency }: {
   </section>;
 }
 
+function CommercePanel({ summary, error, currency }: {
+  summary?: CommerceSummary; error?: string; currency: string;
+}) {
+  const shopCurrency = summary?.storeCurrency ?? "BRL";
+  const daily = summary?.daily.slice(-14) ?? [];
+  const highest = Math.max(0, ...daily.map(day => finite(day.paidRevenue) ?? 0));
+  const completeOrders = summary?.ordersComplete ?? false;
+  const trustedMer = verifiedMer(summary);
+  const currencyMismatch = summary?.warnings.includes("CURRENCY_MISMATCH");
+  const missingCurrency = summary?.warnings.includes("CURRENCY_NOT_ESTABLISHED");
+  return <section className="commercePanel" id="comercio" aria-labelledby="commerce-heading">
+    <div className="panelHeader">
+      <div>
+        <div className="smallEyebrow">NUVEMSHOP + META ADS</div>
+        <h2 id="commerce-heading">Desempenho comercial</h2>
+        <p>Pedidos pagos na loja e gasto em mídia no intervalo selecionado. Consulta somente leitura.</p>
+      </div>
+      <span className="panelTag">{summary?.complete ? "Dados completos" : "Consolidação"}</span>
+    </div>
+    {!summary && <div className="commerceEmpty" role="status">
+      {error ?? "Aguardando conexão da loja e dados do período."}
+      <p>Os indicadores de campanhas Meta Ads permanecem independentes.</p>
+    </div>}
+    {summary && <>
+      {!summary.complete && <div className="alertBanner caution" role="status">
+        <strong>Consolidação parcial</strong>
+        <span>{!summary.ordersComplete ? "A paginação dos pedidos não terminou; faturamento e ticket médio ficam indisponíveis. " : ""}
+          {!summary.metaComplete ? "Os Insights da Meta também estão incompletos; gasto e MER não são exibidos como totais." : ""}
+        </span>
+      </div>}
+      {currencyMismatch && <div className="alertBanner caution" role="status">
+        <strong>Moedas diferentes</strong>
+        <span>Loja: {summary.storeCurrency}; Meta: {summary.metaCurrency}. Sem conversão cambial, o MER fica indisponível.</span>
+      </div>}
+      <div className="kpiGrid commerceKpis">
+        <Card label="Receita paga da loja"
+          value={completeOrders ? money(summary.paidRevenue, shopCurrency) : "—"}
+          hint="Totais de pedidos pagos, por paid_at" icon={<span>◎</span>}/>
+        <Card label="Pedidos pagos"
+          value={completeOrders ? number(summary.paidOrders) : "—"}
+          hint="Pedidos únicos com pagamento confirmado" icon={<Icon name="layers"/>}/>
+        <Card label="Ticket médio pago"
+          value={completeOrders ? money(summary.averageTicket, shopCurrency) : "—"}
+          hint="Receita paga / quantidade de pedidos pagos" icon={<span>↗</span>}/>
+        <Card label="MER"
+          value={multiplier(trustedMer)}
+          hint="Receita paga total / gasto Meta · não é atribuição" accent icon={<Icon name="chart"/>}/>
+      </div>
+      <div className="commerceDetails">
+        <div className="commerceDaily">
+          <div className="smallEyebrow">RECEITA POR PAGAMENTO</div>
+          <h3>Vendas por dia (UTC)</h3>
+          {completeOrders && daily.length ? <div className="commerceBars">
+            {daily.map(day => <div className="commerceDay" key={day.date}>
+              <span className="commerceBarTrack" aria-label={day.date + ": " + money(day.paidRevenue, shopCurrency)}>
+                <span className="commerceBarFill"
+                  style={{ height: highest > 0 ? (finite(day.paidRevenue) ?? 0) / highest * 100 + "%" : "0%" }}/>
+              </span>
+              <small>{readableDate(day.date)}</small>
+            </div>)}
+          </div> : <div className="commerceNoData">Série diária indisponível enquanto a paginação não for concluída.</div>}
+          {completeOrders && daily.length > 0 && <p className="microNote">
+            Exibindo os últimos {daily.length} dias do filtro. Totais acima abrangem todo o intervalo.</p>}
+        </div>
+        <div className="commerceMethod">
+          <div className="smallEyebrow">LEITURA CORRETA</div>
+          <h3>MER não é ROAS atribuído</h3>
+          <div className="commerceMetric"><span>Gasto Meta Ads</span><strong>
+            {summary.metaComplete ? money(summary.mediaSpend, summary.metaCurrency ?? currency) : "—"}</strong></div>
+          <div className="commerceMetric"><span>ROAS atribuído pela Meta</span><strong>
+            {summary.metaComplete ? multiplier(summary.metaRoas) : "—"}</strong></div>
+          <div className="commerceMetric"><span>MER (loja inteira)</span><strong>{multiplier(trustedMer)}</strong></div>
+          <p className="commerceNote">
+            ROAS representa eventos atribuídos pela Meta; MER compara todo o faturamento pago da loja com o gasto em anúncios, sem atribuir pedidos a campanhas.
+            Os pagamentos são agrupados pelo dia UTC e os Insights da Meta usam o fuso da conta de anúncios; pequenas diferenças de corte podem ocorrer.
+            Não são descontados CMV, taxas, frete ou devoluções.
+          </p>
+          {missingCurrency && <p className="commerceNote">Moeda da loja não identificada no período: MER indisponível.</p>}
+          <p className="commerceFoot">{summary.ordersFetched} registros de pedidos consultados em {summary.pagesFetched} páginas.</p>
+        </div>
+      </div>
+    </>}
+  </section>;
+}
+
 export default async function Home({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
   const since = typeof params?.since === "string" ? params.since : undefined;
@@ -195,12 +280,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
   const period = resolvePeriod(since, until);
 
   const query = new URLSearchParams({ since: period.since, until: period.until });
-  const [account, listing, summary, shop] = await Promise.all([
+  const [account, listing, summary, shop, commerce] = await Promise.all([
     readApi<MetaAccount>("/api/v1/meta/account"),
     readApi<CampaignPage>("/api/v1/meta/campaigns?limit=100"),
     period.error ? Promise.resolve({ error: period.error } as Load<InsightSummary>) :
       readApi<InsightSummary>("/api/v1/meta/insights/summary?" + query.toString()),
     readApi<NuvemshopStatus>("/api/v1/nuvemshop/status"),
+    period.error ? Promise.resolve({ error: period.error } as Load<CommerceSummary>) :
+      readApi<CommerceSummary>("/api/v1/commerce/summary?" + query.toString()),
   ]);
   const data = summary.data;
   const currency = account.data?.currency ?? "BRL";
@@ -275,6 +362,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
         <section className="campaignPanel" id="campanhas"><div className="panelHeader"><div><div className="smallEyebrow">DESEMPENHO</div>
           <h2>Campanhas</h2><p>Não foi possível carregar os indicadores do período</p></div></div>
           <div className="emptyPanel">Corrija a integração ou o filtro de datas para consultar as campanhas.</div></section>}
+
+        <CommercePanel summary={commerce.data} error={commerce.error} currency={currency}/>
 
         <section className="shopPanel" id="integracoes" aria-labelledby="shop-heading">
           <div className="shopHeader">

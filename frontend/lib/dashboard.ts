@@ -35,6 +35,35 @@ export type Campaign = {
   daily_budget?: string;
 };
 
+export type CommerceSummary = {
+  since: string;
+  until: string;
+  ordersComplete: boolean;
+  metaComplete: boolean;
+  complete: boolean;
+  pagesFetched: number;
+  ordersFetched: number;
+  paidOrders: number | null;
+  paidRevenue: number | null;
+  averageTicket: number | null;
+  storeCurrency: string | null;
+  metaCurrency: string | null;
+  mediaSpend: number | null;
+  metaAttributedRevenue: number | null;
+  metaRoas: number | null;
+  mer: number | null;
+  daily: { date: string; paidOrders: number; paidRevenue: number }[];
+  warnings: string[];
+};
+
+/** Defensive UI validation: a partial or cross-currency MER is never rendered. */
+export function verifiedMer(summary?: CommerceSummary): number | null {
+  if (!summary?.ordersComplete || !summary?.metaComplete ||
+      !summary.storeCurrency || summary.storeCurrency !== summary.metaCurrency ||
+      (finite(summary.mediaSpend) ?? 0) <= 0) return null;
+  return finite(summary.mer);
+}
+
 export type CampaignPage = { data: Campaign[]; after: string | null };
 export type MetaAccount = { id: string; name: string; currency: string; account_status: number };
 
