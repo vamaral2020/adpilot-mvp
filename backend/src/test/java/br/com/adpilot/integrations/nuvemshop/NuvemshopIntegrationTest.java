@@ -180,4 +180,62 @@ class NuvemshopIntegrationTest {
                 assertThrows(NuvemshopException.class, oauth::begin).code());
         verifyNoInteractions(repo);
     }
+
+    @Test void diagnosesUnexpectedOAuthContentTypeWithoutExposingResponse() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        server.createContext("/apps/authorize/token", exchange -> {
+            byte[] body = "<html>SECRET_INTERNAL_DEBUG_DATA</html>".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "text/html");
+            exchange.sendResponseHeaders(200, body.length);
+            try (var out = exchange.getResponseBody()) { out.write(body); }
+        });
+        server.start();
+        try {
+            var repo = mock(NuvemshopRepository.class);
+            var props = settings("https://api.nuvemshop.com.br",
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            var oauth = new NuvemshopAuthService(props, repo, new NuvemshopCrypto(props),
+                    RestClient.builder());
+            var state = "a".repeat(43);
+            var error = assertThrows(NuvemshopException.class,
+                    () -> oauth.complete("secret-code", state));
+            assertEquals("NUVEMSHOP_OAUTH_CONTENT_TYPE", error.code());
+            assertEquals(200, error.upstreamStatus());
+            var payload = new NuvemshopExceptionHandler().handle(error).getBody();
+            assertNotNull(payload);
+            assertEquals(200, payload.get("upstream_http_status"));
+            assertFalse(payload.toString().contains("secret-code"));
+            assertFalse(payload.toString().contains("SECRET_INTERNAL_DEBUG_DATA"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test void classifiesMalformedJsonWithSafeExceptionTypes() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        server.createContext("/apps/authorize/token", exchange -> {
+            byte[] body = "{unparseable-secret-data".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (var out = exchange.getResponseBody()) { out.write(body); }
+        });
+        server.start();
+        try {
+            var repo = mock(NuvemshopRepository.class);
+            var props = settings("https://api.nuvemshop.com.br",
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            var oauth = new NuvemshopAuthService(props, repo, new NuvemshopCrypto(props),
+                    RestClient.builder());
+            var error = assertThrows(NuvemshopException.class,
+                    () -> oauth.complete("secret-code", "b".repeat(43)));
+            assertEquals("NUVEMSHOP_OAUTH_UNAVAILABLE", error.code());
+            assertNotNull(error.clientException());
+            assertNotNull(error.rootException());
+            var serialized = new NuvemshopExceptionHandler().handle(error).getBody().toString();
+            assertFalse(serialized.contains("secret-code"));
+            assertFalse(serialized.contains("unparseable-secret-data"));
+        } finally {
+            server.stop(0);
+        }
+    }
 }
