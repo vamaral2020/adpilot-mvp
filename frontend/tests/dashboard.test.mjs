@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  presetPeriod, resolvePeriod, money, number, percentage, multiplier, finite, readableDate
+  presetPeriod, resolvePeriod, money, number, percentage, multiplier, finite, readableDate, verifiedMer
 } from "../lib/dashboard.ts";
 
 const today = new Date("2026-10-20T12:00:00.000Z");
@@ -52,4 +52,18 @@ test("renders Portuguese number formats without inventing missing data", () => {
   assert.equal(multiplier(null), "—");
   assert.equal(finite(Number.POSITIVE_INFINITY), null);
   assert.equal(readableDate("2026-10-18"), "18 de out.");
+});
+
+test("MER is suppressed for partial periods and different currencies", () => {
+  const snapshot = {
+    ordersComplete: true, metaComplete: true, storeCurrency: "BRL",
+    metaCurrency: "BRL", mediaSpend: 100, mer: 2.45,
+  };
+  assert.equal(verifiedMer(snapshot), 2.45);
+  assert.equal(verifiedMer({ ...snapshot, ordersComplete: false }), null);
+  assert.equal(verifiedMer({ ...snapshot, metaComplete: false }), null);
+  assert.equal(verifiedMer({ ...snapshot, metaCurrency: "USD" }), null);
+  assert.equal(verifiedMer({ ...snapshot, mediaSpend: 0 }), null);
+  assert.equal(verifiedMer({ ...snapshot, storeCurrency: null }), null);
+  assert.equal(verifiedMer({ ...snapshot, mer: null }), null);
 });
