@@ -57,13 +57,18 @@ public class AnalyticsCollector {
         var seen = new HashSet<String>();
         var rows = new ArrayList<AnalyticsRecords.Order>();
         int fetched = 0, detailLookups = 0;
+        Long expectedCount = null;
         boolean exhausted = false;
         for (int pageNumber = 1; pageNumber <= SHOP_MAX_PAGES; pageNumber++) {
             NuvemshopPage page = shop.ordersUpdatedBetween(lower, upper, pageNumber, 100);
             if (page.data() == null || (page.data().isEmpty() && page.hasNext())) {
                 throw new IllegalStateException("INVALID_SHOP_PAGINATION");
             }
-            fetched += page.data().size();
+            fetched = Math.addExact(fetched, page.data().size());
+            if (page.totalCount() != null) {
+                if (page.totalCount() < 0) throw new IllegalStateException("INVALID_SHOP_TOTAL");
+                expectedCount = page.totalCount();
+            }
             for (Map<String,Object> item : page.data()) {
                 if (item == null) throw new IllegalStateException("INVALID_ORDER_DATA");
                 String id = identifier(item.get("id"));
@@ -111,6 +116,11 @@ public class AnalyticsCollector {
             }
         }
         if (!exhausted) throw new IllegalStateException("SHOP_PAGE_LIMIT");
+        // The provider may omit the Link header even on truncated/unstable lists.
+        // When a filtered total is supplied, reject incomplete windows.
+        if (expectedCount != null && seen.size() < expectedCount) {
+            throw new IllegalStateException("SHOP_TOTAL_INCOMPLETE");
+        }
         return new OrderWindow(List.copyOf(rows),fetched,lower,upper);
     }
 
