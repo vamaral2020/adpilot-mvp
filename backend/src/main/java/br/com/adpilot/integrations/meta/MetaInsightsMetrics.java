@@ -15,6 +15,13 @@ public record MetaInsightsMetrics(BigDecimal spend, long impressions, long click
         BigDecimal ctr, BigDecimal cpc, BigDecimal purchases,
         BigDecimal purchaseValue, BigDecimal roas) {
 
+    /** Single Meta Insight row, using the exact same taxonomy precedence as summary. */
+    public static MetaInsightsMetrics fromRow(Map<String, Object> row) {
+        var accumulator = new Accumulator();
+        accumulator.add(row);
+        return accumulator.snapshot();
+    }
+
     static final class Accumulator {
         private BigDecimal spend = BigDecimal.ZERO;
         private long impressions;
