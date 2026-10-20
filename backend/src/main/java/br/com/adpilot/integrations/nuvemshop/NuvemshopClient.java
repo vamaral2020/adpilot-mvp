@@ -92,7 +92,7 @@ public class NuvemshopClient {
                 // Missing or invalid upstream count is represented as null.
             }
             String link = result.getHeaders().getFirst(HttpHeaders.LINK);
-            boolean hasNext = link != null && link.matches("(?s).*;\\s*rel=\\\"?next\\\"?.*");
+            boolean hasNext = link != null && (link.contains("rel=\"next\"") || link.contains("rel=next"));
             return new NuvemshopPage(rows, page, perPage, total, hasNext);
         } catch (RestClientResponseException e) {
             int upstream = e.getStatusCode().value();

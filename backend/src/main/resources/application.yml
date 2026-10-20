@@ -29,3 +29,13 @@ adpilot:
     version: ${META_GRAPH_VERSION:v26.0}
     account-id: ${META_AD_ACCOUNT_ID:}
     access-token: ${META_ACCESS_TOKEN:}
+  nuvemshop:
+    client-id: ${NUVEMSHOP_CLIENT_ID:}
+    client-secret: ${NUVEMSHOP_CLIENT_SECRET:}
+    redirect-uri: ${NUVEMSHOP_REDIRECT_URI:}
+    user-agent: ${NUVEMSHOP_USER_AGENT:}
+    encryption-key: ${NUVEMSHOP_ENCRYPTION_KEY:}
+    api-base: ${NUVEMSHOP_API_BASE:https://api.nuvemshop.com.br}
+    api-version: ${NUVEMSHOP_API_VERSION:2025-03}
+    oauth-base: ${NUVEMSHOP_OAUTH_BASE:https://www.nuvemshop.com.br}
+    dashboard-url: ${NUVEMSHOP_DASHBOARD_URL:http://localhost:13000/}

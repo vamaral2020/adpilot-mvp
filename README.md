@@ -90,6 +90,67 @@ npm test
 npm run build
 ```
 
+## Integracao Nuvemshop (PR 006 — somente leitura)
+
+A PR 006 implementa **OAuth Authorization Code** com permissões
+`read_products` e `read_orders` cadastradas no Portal de Parceiros.
+Token associado à loja é salvo **criptografado com AES-256-GCM** no PostgreSQL;
+o código de autorização não é armazenado. O parâmetro `state` tem 256 bits
+aleatórios, é persistido somente como hash SHA-256 e deve ser consumido uma
+única vez em até 5 minutos. A conexão atual é limitada ao workspace pessoal
+(uma loja); isolamento multi-tenant será realizado antes de uma implantação SaaS.
+
+### Configuração
+
+1. Criar um aplicativo no Portal de Parceiros Nuvemshop com **somente**
+   `read_products` e `read_orders`. Não habilitar escopos de escrita.
+2. Informar uma URL de redirecionamento HTTPS sob seu controle apontando
+   para `/api/v1/nuvemshop/oauth/callback`. Um localhost isolado não pode
+   receber o redirecionamento vindo do navegador em outro dispositivo; para
+   desenvolvimento, usar um túnel HTTPS restrito e temporário e registrar
+   a mesma URL no Portal de Parceiros e em `NUVEMSHOP_REDIRECT_URI`.
+   O túnel não deve ficar exposto continuamente.
+3. Preencher em `.env` os campos `NUVEMSHOP_CLIENT_ID`,
+   `NUVEMSHOP_CLIENT_SECRET`, `NUVEMSHOP_REDIRECT_URI`,
+   `NUVEMSHOP_USER_AGENT` (formato `AdPilot (contato@seu-dominio.com)`)
+   e `NUVEMSHOP_ENCRYPTION_KEY` (gerar com `openssl rand -base64 32`).
+   **Nunca compartilhar, imprimir ou commitar** essas credenciais.
+   Faça backup seguro da chave: sem ela, os tokens armazenados não podem
+   ser descriptografados.
+4. Executar `docker compose up -d --build api`. Os endpoints protegidos
+   exigem a autenticação Basic atual do AdPilot.
+
+### Conectar loja
+
+```bash
+curl -u admin http://localhost:18080/api/v1/nuvemshop/status
+curl -u admin http://localhost:18080/api/v1/nuvemshop/oauth/start
+```
+
+O segundo endpoint retorna `authorizationUrl` (contém o state anti-CSRF,
+não um token). **Não divulgue esse link**; abra-o no seu navegador no mesmo
+computador. Depois de autorizar a instalação, a Nuvemshop chama o callback
+e o AdPilot redireciona ao dashboard local. Após isso, valide:
+
+```bash
+curl -u admin http://localhost:18080/api/v1/nuvemshop/status
+curl -u admin 'http://localhost:18080/api/v1/nuvemshop/products?page=1&perPage=30'
+curl -u admin 'http://localhost:18080/api/v1/nuvemshop/orders?page=1&perPage=30'
+```
+
+As listas são paginadas usando `page` (1 a 100) e `perPage` (1 a 100);
+a resposta contém `hasNext` e `totalCount` quando informado pela Nuvemshop.
+**Não** propagamos PII de clientes (nome, endereço, e-mail, telefone),
+URLs de API nem tokens; os campos retornados são somente dados comerciais,
+produtos, variantes e itens dos pedidos. Pedidos não são necessariamente
+pagos — use `payment_status=paid` na análise econômica futura.
+A Nuvemshop limita consultas de pedidos a 10 mil registros por pesquisa;
+a sincronização incremental será tratada na próxima PR.
+
+**Escopo desta PR:** conexão e leitura; sem gravação de produtos,
+pedidos ou estoque na Nuvemshop, sem sincronização automática e sem
+disponibilização SaaS pública.
+
 ## Escopo e segurança
 - HTTP Basic com usuário/senha de ambiente no backend e na borda do Next.js (proxy). Só para localhost.
 - Meta Graph API v26.0 por padrão, configurável via `META_GRAPH_VERSION`.
