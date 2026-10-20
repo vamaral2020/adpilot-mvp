@@ -122,6 +122,23 @@ aleatórios, é persistido somente como hash SHA-256 e deve ser consumido uma
 
 Para OAuth, o endpoint oficial brasileiro usa `https://www.nuvemshop.com.br`; não confunda com a URL do callback, que continua sendo o domínio temporário do Cloudflare. Caso `NUVEMSHOP_OAUTH_BASE` esteja definido no `.env`, seu valor sobrescreve o padrão; utilize `https://www.nuvemshop.com.br`. URLs OAuth oficiais documentadas: `https://www.nuvemshop.com.br` e `https://www.tiendanube.com`.
 
+### Token OAuth: dois endpoints distintos
+
+O link de autorizacao no navegador permanece em
+`NUVEMSHOP_OAUTH_BASE=https://www.nuvemshop.com.br`.
+A troca servidor-servidor usa **outro endereco**, documentado no guia de
+autenticacao da Nuvemshop:
+`NUVEMSHOP_TOKEN_URL=https://www.tiendanube.com/apps/authorize/token`.
+O AdPilot envia um POST JSON com `Content-Type: application/json`,
+`Accept: application/json` e `User-Agent`, sem colocar credenciais na URL.
+
+Esse endpoint tem allowlist de hosts oficiais e nao deve apontar para o
+Cloudflare Tunnel nem para o dominio de callback. Em testes isolados,
+endpoints HTTP de loopback sao permitidos. Se o backend receber HTTP 200
+com `text/html`, ele nao interpreta o HTML nem tenta reutilizar o codigo
+OAuth; retorna erro seguro. O campo `cf-mitigated: challenge`, quando
+presente, indica uma pagina de desafio Cloudflare, nao um token valido.
+
 ### Conectar loja
 
 ```bash

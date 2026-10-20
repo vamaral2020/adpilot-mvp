@@ -36,6 +36,7 @@ services:
       NUVEMSHOP_API_BASE: ${NUVEMSHOP_API_BASE:-https://api.nuvemshop.com.br}
       NUVEMSHOP_API_VERSION: ${NUVEMSHOP_API_VERSION:-2025-03}
       NUVEMSHOP_OAUTH_BASE: ${NUVEMSHOP_OAUTH_BASE:-https://www.nuvemshop.com.br}
+      NUVEMSHOP_TOKEN_URL: ${NUVEMSHOP_TOKEN_URL:-https://www.tiendanube.com/apps/authorize/token}
       NUVEMSHOP_DASHBOARD_URL: ${NUVEMSHOP_DASHBOARD_URL:-http://localhost:13000/}
     ports: ['127.0.0.1:18080:8080']
     depends_on:

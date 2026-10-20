@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.json.JsonMapper;
 
 class NuvemshopIntegrationTest {
     private static final String AES_KEY = Base64.getEncoder()
@@ -22,8 +23,12 @@ class NuvemshopIntegrationTest {
     private static final String UA = "AdPilot (test@example.com)";
 
     private NuvemshopSettings settings(String apiBase, String oauthBase) {
+        return settings(apiBase, oauthBase, oauthBase + "/apps/authorize/token");
+    }
+
+    private NuvemshopSettings settings(String apiBase, String oauthBase, String tokenUrl) {
         return new NuvemshopSettings("1234", "app-secret", "https://example.test/callback",
-                UA, AES_KEY, apiBase, "2025-03", oauthBase, "http://localhost:13000/");
+                UA, AES_KEY, apiBase, "2025-03", oauthBase, tokenUrl, "http://localhost:13000/");
     }
 
     @Test void cryptoEncryptsRandomlyAndDetectsTampering() {
@@ -45,6 +50,8 @@ class NuvemshopIntegrationTest {
         server.createContext("/apps/authorize/token", exchange -> {
             assertEquals("POST", exchange.getRequestMethod());
             assertEquals("application/json", exchange.getRequestHeaders().getFirst("Content-Type"));
+            assertEquals("application/json", exchange.getRequestHeaders().getFirst("Accept"));
+            assertEquals(UA, exchange.getRequestHeaders().getFirst("User-Agent"));
             jsonSeen.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] response = """
                     {"access_token":"nuvemshop-test-token","scope":"read_products,read_orders",
@@ -57,12 +64,14 @@ class NuvemshopIntegrationTest {
         server.start();
         try {
             var repo = mock(NuvemshopRepository.class);
-            var props = settings("https://api.nuvemshop.com.br", "http://127.0.0.1:" + server.getAddress().getPort());
+            var props = settings("https://api.nuvemshop.com.br", "https://www.nuvemshop.com.br",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/apps/authorize/token");
+            assertTrue(props.validTokenUrl());
             var crypto = new NuvemshopCrypto(props);
-            var oauth = new NuvemshopAuthService(props, repo, crypto, RestClient.builder());
+            var oauth = new NuvemshopAuthService(props, repo, crypto, RestClient.builder(), JsonMapper.builder().build());
             var begin = oauth.begin();
             assertEquals(900, begin.expiresInSeconds());
-            assertTrue(begin.authorizationUrl().contains("/apps/1234/authorize?state="));
+            assertTrue(begin.authorizationUrl().startsWith("https://www.nuvemshop.com.br/apps/1234/authorize?state="));
             String state = begin.authorizationUrl().split("state=")[1];
             assertEquals(43, state.length());
             var digestCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -164,17 +173,18 @@ class NuvemshopIntegrationTest {
         assertEquals("NUVEMSHOP_INVALID_CALLBACK",
                 assertThrows(NuvemshopException.class, () ->
                         new NuvemshopAuthService(props, repo, new NuvemshopCrypto(props),
-                                RestClient.builder()).complete("code", "forged")).code());
+                                RestClient.builder(), JsonMapper.builder().build()).complete("code", "forged")).code());
         verify(repo, never()).consumeState(any());
     }
 
     @Test void rejectsMisconfiguredAppBeforeSendingAuthRequests() {
         var invalid = new NuvemshopSettings("", "", "", "", "",
                 "https://api.nuvemshop.com.br", "2025-03",
-                "https://www.nuvemshop.com.br", "http://localhost:13000/");
+                "https://www.nuvemshop.com.br", "https://www.tiendanube.com/apps/authorize/token",
+                "http://localhost:13000/");
         var repo = mock(NuvemshopRepository.class);
         var oauth = new NuvemshopAuthService(invalid, repo, new NuvemshopCrypto(invalid),
-                RestClient.builder());
+                RestClient.builder(), JsonMapper.builder().build());
         assertEquals("NOT_CONFIGURED", oauth.status().status());
         assertEquals("NUVEMSHOP_NOT_CONFIGURED",
                 assertThrows(NuvemshopException.class, oauth::begin).code());
@@ -195,11 +205,11 @@ class NuvemshopIntegrationTest {
             var props = settings("https://api.nuvemshop.com.br",
                     "http://127.0.0.1:" + server.getAddress().getPort());
             var oauth = new NuvemshopAuthService(props, repo, new NuvemshopCrypto(props),
-                    RestClient.builder());
+                    RestClient.builder(), JsonMapper.builder().build());
             var state = "a".repeat(43);
             var error = assertThrows(NuvemshopException.class,
                     () -> oauth.complete("secret-code", state));
-            assertEquals("NUVEMSHOP_OAUTH_CONTENT_TYPE", error.code());
+            assertEquals("NUVEMSHOP_INVALID_OAUTH_RESPONSE", error.code());
             assertEquals(200, error.upstreamStatus());
             var payload = new NuvemshopExceptionHandler().handle(error).getBody();
             assertNotNull(payload);
@@ -225,15 +235,59 @@ class NuvemshopIntegrationTest {
             var props = settings("https://api.nuvemshop.com.br",
                     "http://127.0.0.1:" + server.getAddress().getPort());
             var oauth = new NuvemshopAuthService(props, repo, new NuvemshopCrypto(props),
-                    RestClient.builder());
+                    RestClient.builder(), JsonMapper.builder().build());
             var error = assertThrows(NuvemshopException.class,
                     () -> oauth.complete("secret-code", "b".repeat(43)));
-            assertEquals("NUVEMSHOP_OAUTH_UNAVAILABLE", error.code());
-            assertNotNull(error.clientException());
-            assertNotNull(error.rootException());
+            assertEquals("NUVEMSHOP_INVALID_OAUTH_RESPONSE", error.code());
             var serialized = new NuvemshopExceptionHandler().handle(error).getBody().toString();
             assertFalse(serialized.contains("secret-code"));
             assertFalse(serialized.contains("unparseable-secret-data"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test void restrictsTokenEndpointToOfficialDomainsOrIsolatedLoopback() {
+        assertTrue(settings("https://api.nuvemshop.com.br",
+                "https://www.nuvemshop.com.br",
+                "https://www.tiendanube.com/apps/authorize/token").validTokenUrl());
+        assertTrue(settings("https://api.nuvemshop.com.br",
+                "https://www.nuvemshop.com.br",
+                "https://www.nuvemshop.com.br/apps/authorize/token").validTokenUrl());
+        assertFalse(settings("https://api.nuvemshop.com.br",
+                "https://www.nuvemshop.com.br",
+                "https://not-nuvemshop.example/apps/authorize/token").configured());
+        assertFalse(settings("https://api.nuvemshop.com.br",
+                "https://www.nuvemshop.com.br",
+                "http://www.tiendanube.com/apps/authorize/token").configured());
+        assertFalse(settings("https://api.nuvemshop.com.br",
+                "https://www.nuvemshop.com.br",
+                "https://www.tiendanube.com/redirect?token=secret").configured());
+    }
+
+    @Test void classifiesCloudflareChallengeWithoutReadingHtmlOrSecrets() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        server.createContext("/apps/authorize/token", exchange -> {
+            byte[] body = "<html>DO-NOT-DISCLOSE</html>".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "text/html");
+            exchange.getResponseHeaders().set("cf-mitigated", "challenge");
+            exchange.sendResponseHeaders(200, body.length);
+            try (var out = exchange.getResponseBody()) { out.write(body); }
+        });
+        server.start();
+        try {
+            var repo = mock(NuvemshopRepository.class);
+            var props = settings("https://api.nuvemshop.com.br",
+                    "https://www.nuvemshop.com.br",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/apps/authorize/token");
+            var oauth = new NuvemshopAuthService(props, repo, new NuvemshopCrypto(props),
+                    RestClient.builder(), JsonMapper.builder().build());
+            var error = assertThrows(NuvemshopException.class,
+                    () -> oauth.complete("sensitive-code", "c".repeat(43)));
+            assertEquals("NUVEMSHOP_OAUTH_CHALLENGE", error.code());
+            var sanitized = new NuvemshopExceptionHandler().handle(error).getBody().toString();
+            assertFalse(sanitized.contains("DO-NOT-DISCLOSE"));
+            assertFalse(sanitized.contains("sensitive-code"));
         } finally {
             server.stop(0);
         }
