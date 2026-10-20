@@ -1,6 +1,8 @@
 package br.com.adpilot.integrations.nuvemshop;
 
 import java.time.Instant;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class NuvemshopRepository {
+    private static final Logger LOG = LoggerFactory.getLogger(NuvemshopRepository.class);
     public static final UUID WORKSPACE = UUID.fromString("00000000-0000-4000-8000-000000000001");
     private final JdbcTemplate jdbc;
 
@@ -36,6 +39,14 @@ public class NuvemshopRepository {
                 "AND expires_at > NOW() RETURNING workspace_id",
                 (rs, rowNum) -> rs.getObject("workspace_id", UUID.class), digest);
         if (ids.size() != 1 || !WORKSPACE.equals(ids.getFirst())) {
+            // A matching entry, if still present, can only be expired here.
+            // Count-only diagnostics do not expose tokens, code or the state itself.
+            Integer matchingExpired = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM nuvemshop_oauth_state WHERE state_hash = ? AND expires_at <= NOW()",
+                    Integer.class, digest);
+            LOG.warn("NUVEMSHOP_OAUTH_STATE_REJECTED state_ref={} reason={}",
+                    NuvemshopAuthService.stateRef(digest),
+                    matchingExpired != null && matchingExpired > 0 ? "expired" : "not_found_or_consumed");
             throw new NuvemshopException(HttpStatus.BAD_REQUEST, "NUVEMSHOP_INVALID_STATE",
                     "Autorizacao expirada, invalida ou ja utilizada. Inicie a conexao novamente.");
         }

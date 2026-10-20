@@ -8,7 +8,10 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -20,6 +23,7 @@ import org.springframework.web.client.RestClientResponseException;
 @Service
 public class NuvemshopAuthService {
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final Logger LOG = LoggerFactory.getLogger(NuvemshopAuthService.class);
     private final NuvemshopSettings settings;
     private final NuvemshopRepository repository;
     private final NuvemshopCrypto crypto;
@@ -49,7 +53,11 @@ public class NuvemshopAuthService {
         byte[] randomBytes = new byte[32];
         RANDOM.nextBytes(randomBytes);
         String state = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
-        repository.createState(digest(state));
+        byte[] digest = digest(state);
+        repository.createState(digest);
+        // Correlation uses 48 bits of the SHA-256 digest of a 256-bit random state.
+        // Never log raw state, authorization code, URLs or token.
+        LOG.info("NUVEMSHOP_OAUTH_START state_ref={}", stateRef(digest));
         String url = settings.oauthBase() + "/apps/" + settings.clientId() + "/authorize?state="
                 + URLEncoder.encode(state, StandardCharsets.UTF_8);
         return new Authorization(url, 300);
@@ -62,7 +70,10 @@ public class NuvemshopAuthService {
             throw new NuvemshopException(HttpStatus.BAD_REQUEST, "NUVEMSHOP_INVALID_CALLBACK",
                     "Parametros de autorizacao invalidos.");
         }
-        repository.consumeState(digest(state));
+        byte[] digest = digest(state);
+        LOG.info("NUVEMSHOP_OAUTH_CALLBACK state_ref={}", stateRef(digest));
+        repository.consumeState(digest);
+        LOG.info("NUVEMSHOP_OAUTH_STATE_CONSUMED state_ref={}", stateRef(digest));
         Map<String, Object> payload = Map.of(
                 "client_id", settings.clientId(),
                 "client_secret", settings.clientSecret(),
@@ -135,6 +146,11 @@ public class NuvemshopAuthService {
             throw new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE, "NUVEMSHOP_NOT_CONFIGURED",
                     "Configure o aplicativo Nuvemshop, callback, User-Agent e chave de criptografia no ambiente.");
         }
+    }
+
+    static String stateRef(byte[] digest) {
+        // Diagnostic correlation only; truncated digest cannot recreate the nonce.
+        return HexFormat.of().formatHex(digest, 0, 6);
     }
 
     static byte[] digest(String state) {
