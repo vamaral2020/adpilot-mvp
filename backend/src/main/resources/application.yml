@@ -40,3 +40,4 @@ adpilot:
     oauth-base: ${NUVEMSHOP_OAUTH_BASE:https://www.nuvemshop.com.br}
     token-url: ${NUVEMSHOP_TOKEN_URL:https://www.tiendanube.com/apps/authorize/token}
     dashboard-url: ${NUVEMSHOP_DASHBOARD_URL:http://localhost:13000/}
+    payment-diagnostics-enabled: ${ADPILOT_NUVEMSHOP_DIAGNOSTICS_ENABLED:false}
