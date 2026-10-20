@@ -163,3 +163,22 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
 .conversionSourceBreakdown strong{display:block;font-size:12px;color:#c9dbf1;margin-bottom:10px}
 .conversionSourceBreakdown p{font-size:11px;color:#98b2cc;line-height:1.65;margin:7px 0;overflow-wrap:anywhere}
 @media(max-width:700px){.conversionSourceBreakdown{grid-template-columns:1fr}}
+
+
+/* PR 016 — read-only historical analytics */
+.historyShell{max-width:1250px;margin:0 auto;padding:32px clamp(20px,4vw,60px) 70px}
+.historyNav{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:24px;color:var(--muted);gap:16px}
+.historyNav a{color:var(--accent);font-weight:650}
+.historyHeader{margin:40px 0 24px}
+.historyHeader p{color:var(--muted);line-height:1.6}
+.historyKpis,.historyGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:22px 0}
+.historyGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.historyCard{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:24px;min-width:0;margin-bottom:16px}
+.historyCard>span{display:block;color:var(--muted);font-size:12px}
+.historyCard>strong{display:block;font-size:clamp(20px,2.5vw,30px);margin:12px 0}
+.historyCard>small,.historySmall{color:var(--muted);font-size:12px;line-height:1.7}
+.historyCard h2{font-size:17px;margin-bottom:20px}
+.historyChart{height:220px;display:flex;align-items:end;gap:4px;border-bottom:1px solid var(--border);overflow-x:auto;padding:8px 0 0}
+.historyBarColumn{flex:1;min-width:5px;height:100%;display:flex;align-items:end}
+.historyBar{display:block;width:100%;min-height:0;background:linear-gradient(0deg,#4c7af0,#53dac0);border-radius:3px 3px 0 0}
+@media(max-width:800px){.historyKpis,.historyGrid{grid-template-columns:1fr}.historyChart{height:160px}}
