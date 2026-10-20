@@ -320,3 +320,88 @@ Referências do provedor:
 https://nuvemshop.dev/docs-api/resources/2025-03/order
 https://tiendanube.github.io/api-documentation/v1/resources/transaction
 
+
+## Diagnóstico temporário de `paid_at` — PR 011
+
+Motivação: a listagem do AdPilot informa 45 pedidos com
+`payment_status=paid` mas `paid_at=null`. A exportação administrativa
+aponta datas para a maioria desses pedidos. Precisamos determinar **em qual
+resposta o valor difere** antes de alterar o MER ou assumir datas de criação.
+
+### Ativação somente local
+
+O diagnóstico fica **desabilitado por padrão**. Adicione ao `.env` local:
+
+```dotenv
+ADPILOT_NUVEMSHOP_DIAGNOSTICS_ENABLED=true
+```
+
+A opção é passada pelo Docker Compose apenas para o container `api`.
+Reconstrua/recrie somente a API após atualizar a branch:
+
+```bash
+docker compose up -d --build --force-recreate api
+```
+
+O endpoint exige HTTP Basic e não funciona com a opção desabilitada
+(retorna HTTP 404).
+
+### Comparar os pedidos sem expor PII
+
+No Mac, rode (o curl pede a senha Basic, sem registrá-la no histórico):
+
+```bash
+umask 077
+curl -fsS -u admin 'http://localhost:18080/api/v1/nuvemshop/diagnostics/orders/158' \
+  > "$HOME/Downloads/adpilot-diagnostico-pedido-158.json"
+python3 -m json.tool "$HOME/Downloads/adpilot-diagnostico-pedido-158.json"
+```
+
+Repita, se necessário, para `/orders/157` e `/orders/119` e salve
+em arquivos separados. A consulta identifica o ID interno da API pela
+**listagem paginada existente** e executa duas leituras individuais:
+
+- `list`: valores recebidos no `GET /orders?fields=...` que o AdPilot
+  atualmente usa na consolidação;
+- `individualFiltered`: `GET /orders/{id}?fields=id,number,status,payment_status,created_at,paid_at,updated_at`;
+- `individualFull`: `GET /orders/{id}` **sem** filtro `fields`;
+- Cada campo tem `present` e `type` (`missing`, `null`, `string`,
+  `number` ou `unexpected`) e `value` seguro, permitindo distinguir
+  ausente de nulo sem inventar datas.
+
+A resposta completa do terceiro GET **pode conter dados pessoais e
+segredos de pagamento**, portanto é mantida somente em memória. **Nunca
+imprimimos o corpo bruto**. Somente os campos escalares permitidos são
+serializados como uma linha `NUVEMSHOP_PAYMENT_DIAGNOSTIC {JSON}` no
+stdout do backend, sem contatos, endereços, cartões, tokens ou listas de
+produtos.
+
+Para salvar o log JSON estruturado em um arquivo no Mac (com permissão
+restrita), execute **depois** de consultar os pedidos:
+
+```bash
+umask 077
+docker compose logs --no-color --since=15m api \
+  | sed -n 's/^.*NUVEMSHOP_PAYMENT_DIAGNOSTIC //p' \
+  > "$HOME/Downloads/adpilot-nuvemshop-payment-diagnostic.jsonl"
+chmod 600 "$HOME/Downloads/adpilot-nuvemshop-payment-diagnostic.jsonl"
+```
+
+Os arquivos JSON e JSONL devem permanecer locais; não envie logs gerais
+da aplicação ou respostas não filtradas. O código **não altera** pedidos,
+OAuth, permissões nem cálculo comercial.
+
+### Desativação obrigatória após a análise
+
+Troque o valor do `.env` por:
+
+```dotenv
+ADPILOT_NUVEMSHOP_DIAGNOSTICS_ENABLED=false
+```
+
+E execute `docker compose up -d --force-recreate api`. Apague os logs
+locais após concluir a conferência. **Este endpoint é temporário e não
+deve ser habilitado em produção.**
+
+Documentação Nuvemshop 2025-03:
+https://nuvemshop.dev/docs-api/resources/2025-03/order
