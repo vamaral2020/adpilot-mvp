@@ -405,3 +405,45 @@ deve ser habilitado em produção.**
 
 Documentação Nuvemshop 2025-03:
 https://nuvemshop.dev/docs-api/resources/2025-03/order
+
+## Vendas efetivadas — PR 012
+
+A consolidação comercial considera somente **pedidos com**
+`payment_status=paid` **e** `status != cancelled`. Cancelados ficam
+fora de receita, quantidade de vendas e ticket médio, mesmo quando o
+provedor mantém o status de pagamento como `paid`. Pedidos com
+`payment_status=refunded`, `voided` ou `pending` também não entram por
+não satisfazerem o critério `paid`.
+
+**Recuperação de datas:** a PR 011 comprovou, para os pedidos #158 e #119,
+que a listagem devolve `paid_at=null` mas o detalhe individual com filtro
+de campos devolve o `paid_at` correto. O novo fluxo consulta
+`GET /orders/{id}?fields=id,number,status,payment_status,paid_at,total,currency`
+**apenas** para pedidos pagos não cancelados com data ausente ou inválida
+na listagem. A data retornada é convertida para UTC e usada na janela
+selecionada. Não se usa `created_at` como substituto. Só se adiciona
+receita se ID, número do pedido (quando presente), status, moeda e total
+coincidirem entre listagem e detalhe.
+
+A recuperação fica limitada a **100 requisições individuais por resumo**.
+`paidDatesRecovered`, `individualLookups`, `cancelledOrdersIgnored`,
+`inconsistentDetails` e `paidOrdersWithoutDate` informam o resultado.
+O endpoint não faz gravações na loja ou no banco de dados. Com paginação
+incompleta, detalhes inconsistentes, data ainda ausente ou limite atingido,
+`ordersComplete=false`, e receita/ticket/MER finais permanecem
+indisponíveis para não estimar valores indevidos. O cliente propaga erros
+upstream, inclusive 429 (rate-limit), em vez de retornar falsamente um
+total completo.
+
+A **auditoria da PR 010 é uma visão bruta de qualidade dos dados** de
+todos os pedidos retornados pela Nuvemshop, **inclusive cancelados**;
+seus contadores de `paid_at` na listagem não representam o universo de
+vendas efetivadas e não são alterados pela recuperação da PR 012.
+
+Como o novo resumo executa consultas adicionais na Nuvemshop, a chamada
+da seção comercial do frontend tem timeout de até 120 segundos no
+ambiente local. Em volumes maiores, será necessário melhorar cache/
+limites da API antes de ampliar o uso. O MER é relação entre toda a
+receita paga **não cancelada** na loja e o gasto na Meta; não constitui
+ROAS atribuído nem lucro líquido. O tratamento de estornos tardios,
+tarifas e ajustes de períodos será feito em evolução específica.

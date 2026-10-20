@@ -145,6 +145,7 @@ public class CommerceSummaryService {
                 continue;
             }
             if (!"paid".equals(detail.get("payment_status"))
+                    || !("open".equals(detail.get("status")) || "closed".equals(detail.get("status")))
                     || !java.util.Objects.equals(original.get("status"), detail.get("status"))
                     || !matchingMonetary(original.get("total"), detail.get("total"))
                     || !java.util.Objects.equals(original.get("currency"), detail.get("currency"))) {

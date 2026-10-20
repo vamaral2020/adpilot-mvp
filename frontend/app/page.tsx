@@ -18,7 +18,7 @@ type NuvemshopStatus = {
   connectedAt: string | null;
 };
 
-async function readApi<T>(path: string): Promise<Load<T>> {
+async function readApi<T>(path: string, timeoutMs = 45_000): Promise<Load<T>> {
   const username = process.env.ADPILOT_ADMIN_USERNAME ?? "";
   const password = process.env.ADPILOT_ADMIN_PASSWORD ?? "";
   const origin = process.env.INTERNAL_API_URL ?? "http://localhost:18080";
@@ -28,7 +28,7 @@ async function readApi<T>(path: string): Promise<Load<T>> {
     const response = await fetch(origin + path, {
       headers: { Authorization: "Basic " + Buffer.from(username + ":" + password).toString("base64") },
       cache: "no-store",
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
       const label = response.status === 503 ? "Serviço indisponível" :
@@ -351,9 +351,11 @@ function PaymentAuditPanel({ audit, error }: { audit?: PaymentAudit; error?: str
         <AuditBuckets heading="Status de pagamento (todos)" rows={audit.paymentStatuses}/>
       </div>
       <p className="auditNote">
-        Categorias são indícios para investigação, não evidências de importação,
-        confirmação manual ou gateway específico. Nenhuma transação financeira foi consultada
-        e nenhum pedido foi modificado. O MER permanece indisponível se o período não puder ser comprovado.
+        Esta auditoria mede a qualidade dos dados brutos da Nuvemshop, inclusive pedidos cancelados;
+        suas contagens de datas ausentes na listagem não são indicadores de vendas efetivadas.
+        Categorias são indícios para investigação, não provas de origem.
+        A consolidação comercial pode recuperar paid_at individualmente e ignora cancelados.
+        Nenhum pedido foi modificado.
       </p>
     </>}
   </section>;
@@ -373,7 +375,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
       readApi<InsightSummary>("/api/v1/meta/insights/summary?" + query.toString()),
     readApi<NuvemshopStatus>("/api/v1/nuvemshop/status"),
     period.error ? Promise.resolve({ error: period.error } as Load<CommerceSummary>) :
-      readApi<CommerceSummary>("/api/v1/commerce/summary?" + query.toString()),
+      readApi<CommerceSummary>("/api/v1/commerce/summary?" + query.toString(), 120_000),
     readApi<PaymentAudit>("/api/v1/nuvemshop/payments/audit"),
   ]);
   const data = summary.data;
