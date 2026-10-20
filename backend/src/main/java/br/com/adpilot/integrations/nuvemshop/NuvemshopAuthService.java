@@ -94,7 +94,9 @@ public class NuvemshopAuthService {
         Map<String, Object> response;
         try {
             response = client.post()
-                    .uri(URI.create(settings.oauthBase() + "/apps/authorize/token"))
+                    .uri(URI.create(settings.tokenUrl()))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .header(org.springframework.http.HttpHeaders.USER_AGENT, settings.userAgent())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(payload)
                     .retrieve()
@@ -110,9 +112,12 @@ public class NuvemshopAuthService {
             // Never include the response body: it may contain credentials or the OAuth code.
             var mime = e.getContentType();
             String type = mime.getType() + "/" + mime.getSubtype();
-            LOG.warn("NUVEMSHOP_OAUTH_TOKEN_EXCHANGE_FAILED state_ref={} category=unexpected_content_type upstream_status={} content_type={}",
-                    stateRef(digest), e.getStatusCode().value(), type);
-            throw new NuvemshopException(HttpStatus.BAD_GATEWAY, "NUVEMSHOP_OAUTH_CONTENT_TYPE",
+            boolean challenge = e.getResponseHeaders() != null
+                    && "challenge".equalsIgnoreCase(e.getResponseHeaders().getFirst("cf-mitigated"));
+            LOG.warn("NUVEMSHOP_OAUTH_TOKEN_EXCHANGE_FAILED state_ref={} category={} upstream_status={} content_type={}",
+                    stateRef(digest), challenge ? "cloudflare_challenge" : "unexpected_content_type", e.getStatusCode().value(), type);
+            throw new NuvemshopException(HttpStatus.BAD_GATEWAY,
+                    challenge ? "NUVEMSHOP_OAUTH_CHALLENGE" : "NUVEMSHOP_OAUTH_CONTENT_TYPE",
                     "Resposta OAuth em formato inesperado: " + type + ".",
                     e.getStatusCode().value());
         } catch (RestClientException e) {

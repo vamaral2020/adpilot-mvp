@@ -38,4 +38,5 @@ adpilot:
     api-base: ${NUVEMSHOP_API_BASE:https://api.nuvemshop.com.br}
     api-version: ${NUVEMSHOP_API_VERSION:2025-03}
     oauth-base: ${NUVEMSHOP_OAUTH_BASE:https://www.nuvemshop.com.br}
+    token-url: ${NUVEMSHOP_TOKEN_URL:https://www.tiendanube.com/apps/authorize/token}
     dashboard-url: ${NUVEMSHOP_DASHBOARD_URL:http://localhost:13000/}

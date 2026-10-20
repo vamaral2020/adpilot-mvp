@@ -23,7 +23,8 @@ class NuvemshopIntegrationTest {
 
     private NuvemshopSettings settings(String apiBase, String oauthBase) {
         return new NuvemshopSettings("1234", "app-secret", "https://example.test/callback",
-                UA, AES_KEY, apiBase, "2025-03", oauthBase, "http://localhost:13000/");
+                UA, AES_KEY, apiBase, "2025-03", oauthBase,
+                oauthBase + "/apps/authorize/token", "http://localhost:13000/");
     }
 
     @Test void cryptoEncryptsRandomlyAndDetectsTampering() {
@@ -171,7 +172,8 @@ class NuvemshopIntegrationTest {
     @Test void rejectsMisconfiguredAppBeforeSendingAuthRequests() {
         var invalid = new NuvemshopSettings("", "", "", "", "",
                 "https://api.nuvemshop.com.br", "2025-03",
-                "https://www.nuvemshop.com.br", "http://localhost:13000/");
+                "https://www.nuvemshop.com.br", "https://www.tiendanube.com/apps/authorize/token",
+                "http://localhost:13000/");
         var repo = mock(NuvemshopRepository.class);
         var oauth = new NuvemshopAuthService(invalid, repo, new NuvemshopCrypto(invalid),
                 RestClient.builder());
