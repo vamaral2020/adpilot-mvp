@@ -35,6 +35,22 @@ export type Campaign = {
   daily_budget?: string;
 };
 
+export type MetaPurchaseAudit = {
+  since: string; until: string; complete: boolean;
+  pagesFetched: number; recordsFetched: number;
+  selectedPurchases: number | null; selectedRevenue: number | null;
+  rowsWithoutPurchaseActions: number;
+  rowsWithoutPurchaseValues: number;
+  rowsWithDifferentSelectedTypes: number;
+  selectedCountTypes: Record<string, number>;
+  selectedValueTypes: Record<string, number>;
+  actionBreakdown: {
+    actionType: string; rowsWithCount: number; count: number;
+    rowsWithValue: number; value: number;
+  }[];
+  warnings: string[];
+};
+
 export type PaymentAudit = {
   complete: boolean;
   pagesFetched: number;
