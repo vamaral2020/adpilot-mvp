@@ -90,7 +90,8 @@ public class NuvemshopAuthService {
         String token = response.get("access_token") instanceof String t ? t : "";
         String scope = response.get("scope") instanceof String s ? s : "";
         if (!storeId.matches("[0-9]{1,40}") || token.isBlank()
-                || !scopeContains(scope, "read_products") || !scopeContains(scope, "read_orders")) {
+                || !scopeContains(scope, "read_products") || !scopeContains(scope, "read_orders")
+                || !onlyReadScopes(scope)) {
             throw invalidTokenResponse();
         }
         // Store only encrypted credentials; OAuth scopes validated for read-only use.
@@ -99,6 +100,14 @@ public class NuvemshopAuthService {
 
     private static boolean scopeContains(String scope, String value) {
         return Arrays.stream(scope.split("[,\\s]+")).anyMatch(value::equals);
+    }
+
+    private static boolean onlyReadScopes(String scope) {
+        // Fail closed if a Partner Portal app was mistakenly configured with
+        // additional permissions, in particular any write_* scope.
+        return Arrays.stream(scope.split("[,\\s]+"))
+                .filter(s -> !s.isBlank())
+                .allMatch(s -> s.equals("read_products") || s.equals("read_orders"));
     }
 
     private static NuvemshopException invalidTokenResponse() {
