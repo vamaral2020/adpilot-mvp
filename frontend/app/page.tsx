@@ -68,6 +68,7 @@ function Sidebar() {
     <nav aria-label="Menu principal" className="sideNav">
       <Link href="/" className="nav active"><Icon name="grid"/> Visão geral</Link>
       <Link href="#campanhas" className="nav"><Icon name="activity"/> Campanhas</Link>
+      <Link href="/historico" className="nav"><Icon name="chart"/> Histórico analítico</Link>
       <span className="nav disabled" title="Disponível em etapa futura"><Icon name="chart"/> Recomendações IA <span className="coming">Em breve</span></span>
     </nav>
     <div className="sidebarSection sidebarSectionSecond">GESTÃO</div>
