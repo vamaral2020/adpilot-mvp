@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  presetPeriod, resolvePeriod, money, number, percentage, multiplier, finite, readableDate, verifiedMer, auditMissingPercentage
+  presetPeriod, resolvePeriod, money, number, percentage, multiplier, finite, readableDate, verifiedMer, auditMissingPercentage, purchaseAuditConsistency
 } from "../lib/dashboard.ts";
 
 const today = new Date("2026-10-20T12:00:00.000Z");
@@ -76,6 +76,21 @@ test("MER never appears when paid orders have unknown dates", () => {
     datedPaidOrders: 3, datedPaidRevenue: 500,
   };
   assert.equal(verifiedMer(partial), null);
+});
+
+test("Meta attribution diagnostics distinguish exact agreement, mismatch and partial data", () => {
+  const meta = {since:"2026-10-12", until:"2026-10-18", complete:true,
+    totals:{purchases:3, purchaseValue:698.05}};
+  const audit = {since:"2026-10-12", until:"2026-10-18", complete:true,
+    selectedPurchases:3, selectedRevenue:698.05};
+  assert.equal(purchaseAuditConsistency(audit, meta), "match");
+  assert.equal(purchaseAuditConsistency({...audit, selectedRevenue:698.06}, meta), "match");
+  assert.equal(purchaseAuditConsistency({...audit, selectedRevenue:698.07}, meta), "mismatch");
+  assert.equal(purchaseAuditConsistency({...audit, complete:false}, meta), "unavailable");
+  assert.equal(purchaseAuditConsistency(audit, {...meta, complete:false}), "unavailable");
+  assert.equal(purchaseAuditConsistency({...audit, until:"2026-10-19"}, meta), "unavailable");
+  assert.equal(purchaseAuditConsistency({...audit, selectedRevenue:null}, meta), "unavailable");
+  assert.equal(purchaseAuditConsistency({...audit, selectedPurchases:Infinity}, meta), "unavailable");
 });
 
 test("payment audit coverage distinguishes paid orders from all orders", () => {

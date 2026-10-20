@@ -4,7 +4,7 @@ import {
   money, number, percentage, multiplier, presetPeriod, readableDate, resolvePeriod, finite,
   type MetaAccount, type CampaignPage, type Campaign, type InsightSummary,
   type InsightMetrics, type Period, type CommerceSummary, type PaymentAudit,
-  type AuditBucket, type MetaPurchaseAudit, auditMissingPercentage, verifiedMer
+  type AuditBucket, type MetaPurchaseAudit, auditMissingPercentage, verifiedMer, purchaseAuditConsistency
 } from "../lib/dashboard";
 
 export const dynamic = "force-dynamic";
@@ -390,14 +390,7 @@ const PURCHASE_LABELS: Record<string, string> = {
 function MetaPurchaseDiagnosticPanel({ audit, meta, error }: {
   audit?: MetaPurchaseAudit; meta?: InsightSummary; error?: string;
 }) {
-  const samePeriod = audit && meta && audit.since === meta.since && audit.until === meta.until;
-  const comparable = Boolean(audit?.complete && meta?.complete && samePeriod);
-  const purchaseMatch = comparable && audit?.selectedPurchases !== null
-    && finite(audit?.selectedPurchases) !== null && finite(meta?.totals.purchases) !== null
-    && Math.abs((audit?.selectedPurchases ?? 0) - (meta?.totals.purchases ?? 0)) < 0.011;
-  const revenueMatch = comparable && audit?.selectedRevenue !== null
-    && finite(audit?.selectedRevenue) !== null && finite(meta?.totals.purchaseValue) !== null
-    && Math.abs((audit?.selectedRevenue ?? 0) - (meta?.totals.purchaseValue ?? 0)) < 0.011;
+  const consistency = purchaseAuditConsistency(audit, meta);
   return <section className="conversionAuditPanel" id="conversoes" aria-labelledby="conversion-audit-heading">
     <div className="panelHeader">
       <div><div className="smallEyebrow">META ADS · DIAGNÓSTICO DE ATRIBUIÇÃO</div>
@@ -408,8 +401,8 @@ function MetaPurchaseDiagnosticPanel({ audit, meta, error }: {
     {!audit ? <div className="commerceEmpty" role="status">
       {error ?? "Auditoria de compras atribuídas indisponível."}
     </div> : <>
-      {comparable ? <div className={"conversionMatch " + (purchaseMatch && revenueMatch ? "ok" : "caution")}>
-        {purchaseMatch && revenueMatch
+      {consistency !== "unavailable" ? <div className={"conversionMatch " + (consistency === "match" ? "ok" : "caution")}>
+        {consistency === "match"
           ? "Contagem de compras e receita atribuída coincidem com o resumo de Insights."
           : "A auditoria e o resumo Meta retornaram totais diferentes. Verifique eventos, datas e momento da consulta."}
       </div> : <div className="conversionMatch caution">
