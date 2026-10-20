@@ -12,6 +12,10 @@ public final class AnalyticsRecords {
             Instant paidAt, String paidDateSource, Instant createdAt,
             Instant updatedAt, BigDecimal total, String currency, boolean eligibleSale) {}
 
+    public record Campaign(String accountId, String id, LocalDate observedDay,
+            String name, String objective, String status, String effectiveStatus,
+            Instant observedAt) {}
+
     public record Meta(String accountId, String campaignId, LocalDate day,
             BigDecimal spend, long impressions, long clicks,
             BigDecimal purchases, BigDecimal attributedRevenue, String currency) {}

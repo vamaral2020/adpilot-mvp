@@ -3,7 +3,7 @@
 CREATE TABLE analytics_sync_state (
     workspace_id UUID NOT NULL REFERENCES workspace(id),
     provider VARCHAR(20) NOT NULL CHECK (provider IN ('META_ADS','NUVEMSHOP')),
-    resource VARCHAR(32) NOT NULL CHECK (resource IN ('ORDERS','INSIGHTS_DAILY')),
+    resource VARCHAR(32) NOT NULL CHECK (resource IN ('ORDERS','INSIGHTS_DAILY','CAMPAIGNS')),
     cursor_at TIMESTAMPTZ,
     last_completed_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -47,6 +47,23 @@ CREATE TABLE analytics_order_snapshot (
 CREATE INDEX ix_analytics_order_paid ON analytics_order_snapshot(workspace_id,paid_at)
     WHERE eligible_paid_sale = TRUE;
 CREATE INDEX ix_analytics_order_updates ON analytics_order_snapshot(workspace_id,source_updated_at);
+
+-- Daily snapshots of campaign metadata reflect the state observed on the
+-- collection day; status must not be presented as a historical Meta status.
+CREATE TABLE analytics_meta_campaign_snapshot (
+    workspace_id UUID NOT NULL REFERENCES workspace(id),
+    account_id VARCHAR(40) NOT NULL,
+    campaign_id VARCHAR(40) NOT NULL,
+    observed_day DATE NOT NULL,
+    campaign_name VARCHAR(160),
+    objective VARCHAR(80),
+    status VARCHAR(40),
+    effective_status VARCHAR(40),
+    observed_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (workspace_id,account_id,campaign_id,observed_day)
+);
+CREATE INDEX ix_analytics_campaign_observed
+    ON analytics_meta_campaign_snapshot(workspace_id,account_id,observed_day);
 
 CREATE TABLE analytics_meta_insight_daily (
     workspace_id UUID NOT NULL REFERENCES workspace(id),
