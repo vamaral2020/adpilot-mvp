@@ -490,3 +490,62 @@ caso contrário, os indicadores derivados são ocultados com explicação.
 Não há novas APIs, migrations, escopos OAuth, permissões ou
 credenciais. Implementação concentrada na apresentação e em funções
 puras testadas por Node.
+
+## PR 014 — Diagnóstico de atribuição e clareza na auditoria
+
+**Objetivo:** antes de sugerir alterações de investimento, verificar as
+taxonomias `Purchase` que sustentam as compras e receitas **atribuídas
+pela Meta**, e esclarecer a diferença entre ausência de `paid_at` na
+**listagem bruta** da Nuvemshop e data recuperada pelo resumo comercial.
+
+### Endpoint Meta somente leitura
+
+`GET /api/v1/meta/conversions/audit?since=2026-10-12&until=2026-10-18`
+
+- Usa `MetaAdsClient.insights` com os mesmos campos e permissões
+  `ads_read` existentes; paginação até 20 páginas de 100 linhas, janela
+  de até 90 dias, sem gravar dados ou fazer alterações.
+- Agrega separadamente as taxonomias `purchase`, `omni_purchase`,
+  `offsite_conversion.fb_pixel_purchase`, `onsite_web_purchase`.
+  **Não são números aditivos**: um único evento pode aparecer sob
+  múltiplas taxonomias.
+- Exibe contagens e valores por categoria, quantas linhas selecionaram
+  cada categoria e a escolha efetiva do AdPilot:
+  `purchase` > `omni_purchase` > `offsite_conversion.fb_pixel_purchase`
+  > `onsite_web_purchase`. Contagem e valor são selecionados de maneira
+  independente, como no consolidado existente.
+- A auditoria e o resumo de Insights são consultas independentes:
+  a comparação só confirma concordância se ambos tiverem paginação
+  completa, mesmo período e totais coincidentes.
+- Respostas parciais **não** exibem totais globais como definitivos.
+  O endpoint contém somente agregados, sem detalhes de pessoas,
+  URLs com token, dados de eventos ou identificadores de clientes.
+- **Limitação explícita:** os Insights **não confirmam** se o Pixel está
+  instalado corretamente, se a Conversions API entrega eventos, se
+  `event_id` está correto ou se há deduplicação. Esses testes exigem
+  Gerenciador de Eventos, acessos e dados apropriados, e não são
+  inventados pelo AdPilot.
+
+Exemplo local (Basic Auth requer senha solicitada pelo terminal):
+
+```bash
+curl -sS -u admin \
+  'http://localhost:18080/api/v1/meta/conversions/audit?since=2026-10-12&until=2026-10-18'
+```
+
+### Auditoria Nuvemshop
+
+A antiga mensagem "não é possível determinar a data de pagamento" foi
+substituída por uma distinção explícita: o agregado `payments/audit`
+mostra dados **brutos da listagem** (incluindo cancelados), enquanto
+`commerce/summary` resolve datas de pedidos elegíveis por consulta
+individual e descarta cancelados. Os contadores de fontes diferentes
+são rotulados separadamente, sem assumir equivalência entre datas
+ausentes na listagem e vendas finais.
+
+### Revisão longitudinal futura
+
+A revisão de uma nova campanha de maior duração foi registrada em
+[GitHub Issue #14](https://github.com/vamaral2020/adpilot-mvp/issues/14),
+em backlog até serem definidos campanha, orçamento e datas de início/
+encerramento. A PR 014 **não** inicia, agenda ou altera campanhas.

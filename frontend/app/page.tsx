@@ -387,8 +387,8 @@ const PURCHASE_LABELS: Record<string, string> = {
   onsite_web_purchase: "onsite_web_purchase",
 };
 
-function MetaPurchaseDiagnosticPanel({ audit, meta, error }: {
-  audit?: MetaPurchaseAudit; meta?: InsightSummary; error?: string;
+function MetaPurchaseDiagnosticPanel({ audit, meta, currency, error }: {
+  audit?: MetaPurchaseAudit; meta?: InsightSummary; currency?: string; error?: string;
 }) {
   const consistency = purchaseAuditConsistency(audit, meta);
   return <section className="conversionAuditPanel" id="conversoes" aria-labelledby="conversion-audit-heading">
@@ -412,9 +412,24 @@ function MetaPurchaseDiagnosticPanel({ audit, meta, error }: {
         <div><span>Compras selecionadas pela regra atual</span>
           <strong>{audit.complete ? number(audit.selectedPurchases, 2) : "—"}</strong></div>
         <div><span>Receita selecionada pela regra atual</span>
-          <strong>{audit.complete ? number(audit.selectedRevenue, 2) + " (moeda da conta Meta)" : "—"}</strong></div>
+          <strong>{audit.complete ? currency && /^[A-Z]{3}$/.test(currency)
+            ? money(audit.selectedRevenue, currency) : number(audit.selectedRevenue, 2) + " (moeda não informada)" : "—"}</strong></div>
         <div><span>Linhas com taxonomias diferentes entre contagem e valor</span>
           <strong>{number(audit.rowsWithDifferentSelectedTypes)}</strong></div>
+      </div>
+      <div className="conversionSourceBreakdown">
+        <div><strong>Tipos escolhidos para a contagem</strong>
+          {Object.entries(audit.selectedCountTypes).length
+            ? Object.entries(audit.selectedCountTypes).map(([type, count]) =>
+                <p key={type}>{PURCHASE_LABELS[type] ?? "Outra categoria"}:
+                  {" "}{number(count)} linha(s)</p>)
+            : <p>Nenhuma compra atribuída identificada.</p>}</div>
+        <div><strong>Tipos escolhidos para o valor</strong>
+          {Object.entries(audit.selectedValueTypes).length
+            ? Object.entries(audit.selectedValueTypes).map(([type, count]) =>
+                <p key={type}>{PURCHASE_LABELS[type] ?? "Outra categoria"}:
+                  {" "}{number(count)} linha(s)</p>)
+            : <p>Nenhuma receita atribuída identificada.</p>}</div>
       </div>
       <div className="tableScroll">
         <table className="conversionTaxonomyTable">
@@ -604,7 +619,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
 
         <MediaAnalysisPanel meta={data} store={commerce.data} currency={account.data?.currency}/>
 
-        <MetaPurchaseDiagnosticPanel audit={conversionAudit.data} meta={data} error={conversionAudit.error}/>
+        <MetaPurchaseDiagnosticPanel audit={conversionAudit.data} meta={data}
+          currency={account.data?.currency} error={conversionAudit.error}/>
 
         <CommercePanel summary={commerce.data} error={commerce.error} currency={currency}/>
         {shop.data?.status === "CONNECTED" &&
