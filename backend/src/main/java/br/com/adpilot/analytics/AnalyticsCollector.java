@@ -48,6 +48,48 @@ public class AnalyticsCollector {
                               Instant lower, Instant upper) {}
     public record MetaWindow(List<AnalyticsRecords.Meta> rows, int fetched,
                              String accountId, LocalDate from, LocalDate through) {}
+    public record CampaignWindow(List<AnalyticsRecords.Campaign> rows, int fetched,
+                                 String accountId, Instant observedAt) {}
+
+    public CampaignWindow campaigns(Instant now) {
+        if (!settings.configured()) throw new IllegalStateException("META_NOT_CONFIGURED");
+        var result = new ArrayList<AnalyticsRecords.Campaign>();
+        var ids = new HashSet<String>();
+        var cursors = new HashSet<String>();
+        LocalDate day = now.atZone(ZoneOffset.UTC).toLocalDate();
+        String after = null;
+        int fetched = 0;
+        boolean exhausted = false;
+        for (int i=0; i<META_MAX_PAGES; i++) {
+            MetaPage page = meta.campaigns(100,after);
+            if (page.data()==null || (page.data().isEmpty() && page.after()!=null))
+                throw new IllegalStateException("INVALID_CAMPAIGN_PAGINATION");
+            fetched = Math.addExact(fetched,page.data().size());
+            for (Map<String,Object> row : page.data()) {
+                if (row==null) throw new IllegalStateException("INVALID_CAMPAIGN_ROW");
+                String id = identifier(row.get("id"));
+                if (!ids.add(id)) throw new IllegalStateException("DUPLICATE_CAMPAIGN");
+                result.add(new AnalyticsRecords.Campaign(settings.accountId(),id,day,
+                        safeLabel(row.get("name"),160),safeLabel(row.get("objective"),80),
+                        safeLabel(row.get("status"),40),
+                        safeLabel(row.get("effective_status"),40),now));
+            }
+            after = page.after();
+            if (after==null) { exhausted=true; break; }
+            if (after.isBlank() || after.length()>2048 || !cursors.add(after))
+                throw new IllegalStateException("CAMPAIGN_CURSOR_INVALID");
+        }
+        if (!exhausted) throw new IllegalStateException("CAMPAIGN_PAGE_LIMIT");
+        return new CampaignWindow(List.copyOf(result),fetched,settings.accountId(),now);
+    }
+
+    private static String safeLabel(Object raw,int limit) {
+        if (raw==null) return null;
+        if (!(raw instanceof String text) || text.length()>limit)
+            throw new IllegalStateException("CAMPAIGN_FIELD_INVALID");
+        return text;
+    }
+
 
     public OrderWindow orders(Instant lastCursor, Instant now) {
         Instant upper = now.minusSeconds(300); // stop five minutes before moving upstream clock

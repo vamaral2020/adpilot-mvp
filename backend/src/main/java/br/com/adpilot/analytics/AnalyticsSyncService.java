@@ -58,8 +58,11 @@ public class AnalyticsSyncService {
                         "SHOP_NOT_CONNECTED"));
             }
             if (metaSettings.configured()) {
+                results.add(runCampaigns());
                 results.add(runMeta());
             } else {
+                results.add(new ProviderResult("META_ADS","CAMPAIGNS","SKIPPED",null,null,
+                        "META_NOT_CONFIGURED"));
                 results.add(new ProviderResult("META_ADS","INSIGHTS_DAILY","SKIPPED",null,null,
                         "META_NOT_CONFIGURED"));
             }
@@ -82,6 +85,20 @@ public class AnalyticsSyncService {
         } catch (RuntimeException e) {
             store.failed(runId,"ORDER_SYNC_FAILED");
             return new ProviderResult(provider,resource,"FAILED",null,null,"ORDER_SYNC_FAILED");
+        }
+    }
+
+    private ProviderResult runCampaigns() {
+        final String provider="META_ADS", resource="CAMPAIGNS";
+        long runId = store.begin(provider,resource);
+        try {
+            var result = collector.campaigns(Instant.now());
+            store.saveCampaigns(runId,result.rows(),result.observedAt(),result.fetched());
+            return new ProviderResult(provider,resource,"SUCCEEDED",result.fetched(),
+                    result.rows().size(),null);
+        } catch (RuntimeException e) {
+            store.failed(runId,"CAMPAIGN_SYNC_FAILED");
+            return new ProviderResult(provider,resource,"FAILED",null,null,"CAMPAIGN_SYNC_FAILED");
         }
     }
 

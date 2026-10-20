@@ -68,6 +68,28 @@ public class AnalyticsSyncStore {
     }
 
     @Transactional
+    public void saveCampaigns(long runId, List<AnalyticsRecords.Campaign> rows,
+            Instant observedAt, int fetched) {
+        for (var row : rows) {
+            jdbc.update("""
+                    INSERT INTO analytics_meta_campaign_snapshot
+                    (workspace_id,account_id,campaign_id,observed_day,campaign_name,objective,
+                     status,effective_status,observed_at)
+                    VALUES (?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT (workspace_id,account_id,campaign_id,observed_day)
+                    DO UPDATE SET campaign_name=EXCLUDED.campaign_name,
+                    objective=EXCLUDED.objective,status=EXCLUDED.status,
+                    effective_status=EXCLUDED.effective_status,
+                    observed_at=EXCLUDED.observed_at
+                    WHERE analytics_meta_campaign_snapshot.observed_at<=EXCLUDED.observed_at
+                    """, WORKSPACE,row.accountId(),row.id(),row.observedDay(),row.name(),
+                    row.objective(),row.status(),row.effectiveStatus(),
+                    Timestamp.from(row.observedAt()));
+        }
+        markSuccess(runId,"META_ADS","CAMPAIGNS",observedAt,fetched,rows.size());
+    }
+
+    @Transactional
     public void saveMeta(long runId, List<AnalyticsRecords.Meta> rows,
             String accountId, LocalDate from, LocalDate through, Instant cursor,
             int fetched) {
