@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     const data: { authorizationUrl?: string } = await response.json();
     const url = new URL(data.authorizationUrl ?? "");
     if (url.protocol !== "https:" ||
-        !["www.nuvemshop.com.br", "www.tiendanube.com"].includes(url.hostname) ||
+        !["www.nuvemshop.com", "www.nuvemshop.com.br", "www.tiendanube.com"].includes(url.hostname) ||
         !/^\/apps\/\d+\/authorize$/.test(url.pathname) ||
         !url.searchParams.has("state")) {
       return NextResponse.json({ code: "INVALID_AUTHORIZATION_URL" }, { status: 502 });

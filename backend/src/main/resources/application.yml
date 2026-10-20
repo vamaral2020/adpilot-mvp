@@ -37,5 +37,5 @@ adpilot:
     encryption-key: ${NUVEMSHOP_ENCRYPTION_KEY:}
     api-base: ${NUVEMSHOP_API_BASE:https://api.nuvemshop.com.br}
     api-version: ${NUVEMSHOP_API_VERSION:2025-03}
-    oauth-base: ${NUVEMSHOP_OAUTH_BASE:https://www.nuvemshop.com.br}
+    oauth-base: ${NUVEMSHOP_OAUTH_BASE:https://www.nuvemshop.com}
     dashboard-url: ${NUVEMSHOP_DASHBOARD_URL:http://localhost:13000/}

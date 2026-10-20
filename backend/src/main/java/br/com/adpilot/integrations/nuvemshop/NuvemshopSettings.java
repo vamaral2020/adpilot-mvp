@@ -17,7 +17,7 @@ public class NuvemshopSettings {
             @Value("${adpilot.nuvemshop.encryption-key:}") String encryptionKey,
             @Value("${adpilot.nuvemshop.api-base:https://api.nuvemshop.com.br}") String apiBase,
             @Value("${adpilot.nuvemshop.api-version:2025-03}") String apiVersion,
-            @Value("${adpilot.nuvemshop.oauth-base:https://www.nuvemshop.com.br}") String oauthBase,
+            @Value("${adpilot.nuvemshop.oauth-base:https://www.nuvemshop.com}") String oauthBase,
             @Value("${adpilot.nuvemshop.dashboard-url:http://localhost:13000/}") String dashboardUrl) {
         this.clientId = clientId;
         this.clientSecret = clientSecret;
