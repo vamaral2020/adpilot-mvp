@@ -64,6 +64,50 @@ public class NuvemshopClient {
                 "products", ORDER_ITEM_PROJECTION);
     }
 
+    private static final String PAID_DETAIL_FIELDS =
+            "id,number,status,payment_status,paid_at,total,currency";
+    private static final List<String> PAID_DETAIL_PROJECTION = List.of(
+            "id", "number", "status", "payment_status", "paid_at", "total", "currency");
+
+    /**
+     * Read-only detail lookup: the order listing can report paid_at=null
+     * while GET /orders/{id} contains the actual payment timestamp.
+     * The returned map is a strict allowlist, never the upstream full payload.
+     */
+    public Map<String, Object> paidOrderDetails(long id) {
+        if (id <= 0) {
+            throw new NuvemshopException(HttpStatus.BAD_REQUEST, "INVALID_ORDER_ID",
+                    "Identificador de pedido invalido.");
+        }
+        var installation = repository.installation().orElseThrow(() ->
+                new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE, "NUVEMSHOP_NOT_CONNECTED",
+                        "Conecte a loja Nuvemshop antes de consultar pedidos."));
+        String path = "/" + settings.apiVersion() + "/" + installation.storeId() + "/orders/" + id;
+        URI uri = URI.create(settings.apiBase() + path + "?fields="
+                + URLEncoder.encode(PAID_DETAIL_FIELDS, StandardCharsets.UTF_8));
+        try {
+            var result = client.get().uri(uri)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + crypto.decrypt(installation.tokenEncrypted()))
+                    .header(HttpHeaders.USER_AGENT, settings.userAgent())
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+            if (result == null) {
+                throw new NuvemshopException(HttpStatus.BAD_GATEWAY, "NUVEMSHOP_EMPTY_RESPONSE",
+                        "A Nuvemshop retornou pedido sem conteudo.");
+            }
+            return sanitize(result, PAID_DETAIL_PROJECTION, "", List.of());
+        } catch (RestClientResponseException e) {
+            int upstream = e.getStatusCode().value();
+            throw new NuvemshopException(upstream == 429 ? HttpStatus.SERVICE_UNAVAILABLE
+                    : HttpStatus.BAD_GATEWAY,
+                    upstream == 429 ? "NUVEMSHOP_RATE_LIMIT" : "NUVEMSHOP_ORDER_DETAIL_ERROR",
+                    "Falha na consulta individual do pedido da Nuvemshop.", upstream);
+        } catch (RestClientException e) {
+            throw new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE, "NUVEMSHOP_UNAVAILABLE",
+                    "A API da Nuvemshop esta indisponivel.");
+        }
+    }
+
     /**
      * Minimal, read-only projection for aggregate payment audits; never includes
      * customer records, order products, monetary totals or transaction details.

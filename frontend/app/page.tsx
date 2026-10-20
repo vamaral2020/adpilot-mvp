@@ -18,7 +18,7 @@ type NuvemshopStatus = {
   connectedAt: string | null;
 };
 
-async function readApi<T>(path: string): Promise<Load<T>> {
+async function readApi<T>(path: string, timeoutMs = 45_000): Promise<Load<T>> {
   const username = process.env.ADPILOT_ADMIN_USERNAME ?? "";
   const password = process.env.ADPILOT_ADMIN_PASSWORD ?? "";
   const origin = process.env.INTERNAL_API_URL ?? "http://localhost:18080";
@@ -28,7 +28,7 @@ async function readApi<T>(path: string): Promise<Load<T>> {
     const response = await fetch(origin + path, {
       headers: { Authorization: "Basic " + Buffer.from(username + ":" + password).toString("base64") },
       cache: "no-store",
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
       const label = response.status === 503 ? "Serviço indisponível" :
@@ -205,7 +205,7 @@ function CommercePanel({ summary, error, currency }: {
       <div>
         <div className="smallEyebrow">NUVEMSHOP + META ADS</div>
         <h2 id="commerce-heading">Desempenho comercial</h2>
-        <p>Pedidos pagos na loja e gasto em mídia no intervalo selecionado. Consulta somente leitura.</p>
+        <p>Vendas pagas e não canceladas, por data de pagamento, comparadas com o gasto em Meta Ads. Somente leitura.</p>
       </div>
       <span className="panelTag">{summary?.complete ? "Dados completos" : "Consolidação"}</span>
     </div>
@@ -231,7 +231,7 @@ function CommercePanel({ summary, error, currency }: {
           hint="Totais de pedidos pagos, por paid_at" icon={<span>◎</span>}/>
         <Card label="Pedidos pagos"
           value={completeOrders ? number(summary.paidOrders) : "—"}
-          hint="Pedidos únicos com pagamento confirmado" icon={<Icon name="layers"/>}/>
+          hint="Pedidos pagos, não cancelados, com data no intervalo" icon={<Icon name="layers"/>}/>
         <Card label="Ticket médio pago"
           value={completeOrders ? money(summary.averageTicket, shopCurrency) : "—"}
           hint="Receita paga / quantidade de pedidos pagos" icon={<span>↗</span>}/>
@@ -264,7 +264,7 @@ function CommercePanel({ summary, error, currency }: {
             {summary.metaComplete ? multiplier(summary.metaRoas) : "—"}</strong></div>
           <div className="commerceMetric"><span>MER (loja inteira)</span><strong>{multiplier(trustedMer)}</strong></div>
           <p className="commerceNote">
-            ROAS representa eventos atribuídos pela Meta; MER compara todo o faturamento pago da loja com o gasto em anúncios, sem atribuir pedidos a campanhas.
+            ROAS representa eventos atribuídos pela Meta; MER compara receita de pedidos pagos não cancelados com o gasto em anúncios, sem atribuir pedidos a campanhas.
             Os pagamentos são agrupados pelo dia UTC e os Insights da Meta usam o fuso da conta de anúncios; pequenas diferenças de corte podem ocorrer.
             Não são descontados CMV, taxas, frete ou devoluções.
           </p>
@@ -272,6 +272,15 @@ function CommercePanel({ summary, error, currency }: {
             Pedidos pagos com data identificada no intervalo: {number(summary.datedPaidOrders)}.
             Receita datada identificada: {money(summary.datedPaidRevenue, summary.storeCurrency ?? currency)}.
             Estes valores são parciais, não substituem o faturamento total da loja.
+          </p>}
+          <p className="commerceNote">
+            Pedidos cancelados excluídos: {number(summary.cancelledOrdersIgnored)}.
+            Datas de pagamento recuperadas pela consulta individual: {number(summary.paidDatesRecovered)}
+            ({number(summary.individualLookups)} consultas adicionais).
+          </p>
+          {summary.inconsistentDetails > 0 && <p className="commerceNote">
+            Foram detectadas {number(summary.inconsistentDetails)} divergências entre listagem e detalhe.
+            Os totais comerciais não serão considerados conclusivos até nova conferência.
           </p>}
           {missingCurrency && <p className="commerceNote">Moeda da loja não identificada no período: MER indisponível.</p>}
           <p className="commerceFoot">{summary.ordersFetched} registros de pedidos consultados em {summary.pagesFetched} páginas.</p>
@@ -342,9 +351,11 @@ function PaymentAuditPanel({ audit, error }: { audit?: PaymentAudit; error?: str
         <AuditBuckets heading="Status de pagamento (todos)" rows={audit.paymentStatuses}/>
       </div>
       <p className="auditNote">
-        Categorias são indícios para investigação, não evidências de importação,
-        confirmação manual ou gateway específico. Nenhuma transação financeira foi consultada
-        e nenhum pedido foi modificado. O MER permanece indisponível se o período não puder ser comprovado.
+        Esta auditoria mede a qualidade dos dados brutos da Nuvemshop, inclusive pedidos cancelados;
+        suas contagens de datas ausentes na listagem não são indicadores de vendas efetivadas.
+        Categorias são indícios para investigação, não provas de origem.
+        A consolidação comercial pode recuperar paid_at individualmente e ignora cancelados.
+        Nenhum pedido foi modificado.
       </p>
     </>}
   </section>;
@@ -364,7 +375,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
       readApi<InsightSummary>("/api/v1/meta/insights/summary?" + query.toString()),
     readApi<NuvemshopStatus>("/api/v1/nuvemshop/status"),
     period.error ? Promise.resolve({ error: period.error } as Load<CommerceSummary>) :
-      readApi<CommerceSummary>("/api/v1/commerce/summary?" + query.toString()),
+      readApi<CommerceSummary>("/api/v1/commerce/summary?" + query.toString(), 120_000),
     readApi<PaymentAudit>("/api/v1/nuvemshop/payments/audit"),
   ]);
   const data = summary.data;

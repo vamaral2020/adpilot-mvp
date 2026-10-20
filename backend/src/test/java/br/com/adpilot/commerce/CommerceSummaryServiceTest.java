@@ -266,6 +266,114 @@ class CommerceSummaryServiceTest {
         assertTrue(result.warnings().contains("ORDERS_INCOMPLETE"));
     }
 
+
+    private static Map<String, Object> sale(int id, int number, String orderStatus,
+            String paymentStatus, String paidAt, String total) {
+        var row = new java.util.HashMap<String, Object>(order(id, paymentStatus, paidAt, total, "BRL"));
+        row.put("number", number);
+        row.put("status", orderStatus);
+        return row;
+    }
+
+    @Test void excludesCancelledPaidOrdersEvenWhenTheyHaveDates() {
+        when(shop.orders(1, 100)).thenReturn(page(1, 3L, false,
+                sale(119, 119, "cancelled", "paid", "2026-10-18T12:00:00Z", "999.00"),
+                sale(201, 201, "open", "paid", "2026-10-18T12:00:00Z", "200.00"),
+                sale(199, 199, "cancelled", "pending", null, "100.00")));
+        var result = service.summary(SINCE, UNTIL, 100, 20);
+        assertTrue(result.complete());
+        assertEquals(2, result.cancelledOrdersIgnored());
+        assertEquals(1L, result.paidOrders());
+        assertEquals(new BigDecimal("200.00"), result.paidRevenue());
+        assertEquals(new BigDecimal("2.0000"), result.mer());
+        verify(shop, never()).paidOrderDetails(anyLong());
+    }
+
+    @Test void recoversMissingDateFromIndividualOnlyForNonCancelledPaidSales() {
+        when(shop.orders(1, 100)).thenReturn(page(1, 3L, false,
+                sale(119, 119, "cancelled", "paid", null, "999.00"),
+                sale(158, 158, "open", "paid", null, "200.00"),
+                sale(180, 180, "open", "paid", "2026-10-19T16:00:00+0000", "100.00")));
+        when(shop.paidOrderDetails(158L)).thenReturn(
+                sale(158, 158, "open", "paid", "2026-10-18T11:12:13+0000", "200.00"));
+        var result = service.summary(SINCE, UNTIL, 100, 20);
+        assertTrue(result.complete());
+        assertEquals(1, result.cancelledOrdersIgnored());
+        assertEquals(1, result.paidDatesRecovered());
+        assertEquals(1, result.individualLookups());
+        assertEquals(0, result.paidOrdersWithoutDate());
+        assertEquals(0, result.inconsistentDetails());
+        assertEquals(2L, result.paidOrders());
+        assertEquals(new BigDecimal("300.00"), result.paidRevenue());
+        assertEquals(new BigDecimal("3.0000"), result.mer());
+        assertTrue(result.warnings().contains("PAID_AT_RECOVERED_FROM_DETAIL"));
+        verify(shop, never()).paidOrderDetails(119L);
+        verify(shop).paidOrderDetails(158L);
+        assertEquals(List.of(0L,1L,1L),
+                result.daily().stream().map(CommerceSummary.DailySales::paidOrders).toList());
+    }
+
+    @Test void recoveredDateOutsideIntervalDoesNotBecomeRevenue() {
+        when(shop.orders(1, 100)).thenReturn(page(1, 1L, false,
+                sale(158, 158, "open", "paid", null, "200.00")));
+        when(shop.paidOrderDetails(158L)).thenReturn(
+                sale(158, 158, "open", "paid", "2026-09-18T11:12:13+0000", "200.00"));
+        var result = service.summary(SINCE, UNTIL, 100, 20);
+        assertTrue(result.ordersComplete());
+        assertEquals(1, result.paidDatesRecovered());
+        assertEquals(0L, result.paidOrders());
+        assertEquals(new BigDecimal("0.00"), result.paidRevenue());
+        assertNull(result.mer()); // Store currency unknown in this filtered window.
+    }
+
+    @Test void mismatchInDetailsCannotSilentlyCreateCompleteTotals() {
+        when(shop.orders(1, 100)).thenReturn(page(1, 2L, false,
+                sale(158, 158, "open", "paid", null, "200.00"),
+                sale(180, 180, "open", "paid", "2026-10-18T11:12:13Z", "100.00")));
+        var wrong = sale(158, 159, "open", "paid", "2026-10-18T10:00:00Z", "200.00");
+        when(shop.paidOrderDetails(158L)).thenReturn(wrong);
+        var result = service.summary(SINCE, UNTIL, 100, 20);
+        assertFalse(result.ordersComplete());
+        assertEquals(1, result.inconsistentDetails());
+        assertNull(result.paidRevenue());
+        assertNull(result.mer());
+        assertTrue(result.warnings().contains("ORDER_DETAIL_INCONSISTENT"));
+        assertEquals(new BigDecimal("100.00"), result.datedPaidRevenue());
+    }
+
+    @Test void changedOrderTotalOrStateIsRejectedAsInconsistent() {
+        when(shop.orders(1, 100)).thenReturn(page(1, 1L, false,
+                sale(158, 158, "open", "paid", null, "200.00")));
+        when(shop.paidOrderDetails(158L)).thenReturn(
+                sale(158, 158, "open", "paid", "2026-10-18T10:00:00Z", "201.00"));
+        var result = service.summary(SINCE, UNTIL, 100, 20);
+        assertFalse(result.ordersComplete());
+        assertEquals(1, result.inconsistentDetails());
+        assertNull(result.mer());
+    }
+
+    @Test void detailThatIsNowCancelledIsNeverCountedAsSale() {
+        when(shop.orders(1, 100)).thenReturn(page(1, 1L, false,
+                sale(158, 158, "open", "paid", null, "200.00")));
+        when(shop.paidOrderDetails(158L)).thenReturn(
+                sale(158, 158, "cancelled", "paid", "2026-10-18T10:00:00Z", "200.00"));
+        var result = service.summary(SINCE, UNTIL, 100, 20);
+        assertEquals(1, result.cancelledOrdersIgnored());
+        assertEquals(1, result.inconsistentDetails());
+        assertNull(result.paidRevenue());
+        assertNull(result.mer());
+    }
+
+    @Test void noFallbackWhenAllPaidSalesHaveValidDates() {
+        when(shop.orders(1, 100)).thenReturn(page(1, 2L, false,
+                sale(1, 1, "open", "paid", "2026-10-18T10:00:00Z", "150.00"),
+                sale(2, 2, "closed", "paid", "2026-10-19T13:00:00Z", "50.00")));
+        var result = service.summary(SINCE, UNTIL, 100, 20);
+        assertEquals(0, result.individualLookups());
+        assertTrue(result.ordersComplete());
+        verify(shop, never()).paidOrderDetails(anyLong());
+    }
+
     @Test void refusesEmptyPageWithNextLink() {
         when(shop.orders(1, 100)).thenReturn(new NuvemshopPage(List.of(), 1, 100, 99L, true));
         assertEquals("NUVEMSHOP_INVALID_ORDER_DATA",

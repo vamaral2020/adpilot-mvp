@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class CommerceSummaryService {
     private static final int MAX_PAGES = 100;
+    private static final int MAX_DETAIL_LOOKUPS = 100;
     private static final DateTimeFormatter OFFSET_BASIC =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssZ");
 
@@ -52,6 +53,15 @@ public class CommerceSummaryService {
                     "pageSize deve estar entre 1 e 100 e maxPages entre 1 e 100.");
         }
 
+        // Resolve missing payment dates only for eligible, non-cancelled sales.
+        // Individual order GET can return paid_at even when list GET returns null.
+        List<Map<String, Object>> undated = new ArrayList<>();
+        List<DatedOrder> dated = new ArrayList<>();
+        int cancelledIgnored = 0;
+        int recoveredDates = 0;
+        int detailsFetched = 0;
+        int mismatchedDetails = 0;
+        boolean detailLimitReached = false;
         Map<LocalDate, DayAccumulator> days = new HashMap<>();
         Set<String> orderIds = new HashSet<>();
         BigDecimal paidRevenue = BigDecimal.ZERO;
@@ -76,34 +86,21 @@ public class CommerceSummaryService {
                 if (order == null) throw invalidOrders("Pedido sem identificador.");
                 String id = identifier(order.get("id"));
                 if (!orderIds.add(id)) continue; // Prevent double counting across moving pages.
+                // Cancelled orders are not completed sales, even if payment_status=paid.
+                if ("cancelled".equals(order.get("status"))) {
+                    cancelledIgnored++;
+                    continue;
+                }
                 if (!"paid".equals(order.get("payment_status"))) continue;
 
-                // A paid legacy/imported order can be missing paid_at. Never infer a
-                // payment date from created_at (which represents another event).
-                // Record the anomaly and continue collecting other eligible orders.
                 Object rawPaidAt = order.get("paid_at");
                 LocalDate paidDay = rawPaidAt instanceof String value && !value.isBlank()
                         ? utcDayOrNull(value) : null;
                 if (paidDay == null) {
-                    paidOrdersWithoutDate++;
-                    continue;
+                    undated.add(order);
+                } else {
+                    dated.add(new DatedOrder(order, paidDay));
                 }
-                if (paidDay.isBefore(since) || paidDay.isAfter(until)) continue;
-
-                String currency = order.get("currency") instanceof String c ? c : "";
-                if (!currency.matches("[A-Z]{3}")) {
-                    throw invalidOrders("Moeda ausente ou invalida em pedido pago.");
-                }
-                if (storeCurrency != null && !storeCurrency.equals(currency)) {
-                    throw invalidOrders("Pedidos pagos com moedas diferentes; conversao indisponivel.");
-                }
-                storeCurrency = currency;
-                BigDecimal amount = monetary(order.get("total"));
-                paidOrders++;
-                paidRevenue = paidRevenue.add(amount);
-                DayAccumulator accumulator = days.computeIfAbsent(paidDay, ignored -> new DayAccumulator());
-                accumulator.orders++;
-                accumulator.revenue = accumulator.revenue.add(amount);
             }
             if (!page.hasNext()) {
                 // Missing/duplicate records must not masquerade as complete.
@@ -112,12 +109,90 @@ public class CommerceSummaryService {
             }
         }
 
+        // At most 100 additional upstream GET requests per summary, no unbounded fan-out.
+        // No created_at substitution and no payments with mismatching identifiers/statuses.
+        for (Map<String, Object> original : undated) {
+            if (detailsFetched >= MAX_DETAIL_LOOKUPS) {
+                detailLimitReached = true;
+                paidOrdersWithoutDate++;
+                continue;
+            }
+            detailsFetched++;
+            long id;
+            try {
+                id = Long.parseLong(identifier(original.get("id")));
+            } catch (NumberFormatException e) {
+                paidOrdersWithoutDate++;
+                mismatchedDetails++;
+                continue;
+            }
+            // A 429/permission failure is surfaced by the client, not silently
+            // converted to a complete zero-revenue report.
+            Map<String, Object> detail = shop.paidOrderDetails(id);
+            if (detail == null || !identifier(original.get("id")).equals(
+                    detail.get("id") == null ? "" : detail.get("id").toString())
+                    || original.get("number") != null
+                        && !original.get("number").toString().equals(
+                                detail.get("number") == null ? "" : detail.get("number").toString())) {
+                paidOrdersWithoutDate++;
+                mismatchedDetails++;
+                continue;
+            }
+            if ("cancelled".equals(detail.get("status"))) {
+                cancelledIgnored++;
+                // The status changed between list and detail. No trustworthy snapshot.
+                mismatchedDetails++;
+                continue;
+            }
+            if (!"paid".equals(detail.get("payment_status"))
+                    || !("open".equals(detail.get("status")) || "closed".equals(detail.get("status")))
+                    || !java.util.Objects.equals(original.get("status"), detail.get("status"))
+                    || !matchingMonetary(original.get("total"), detail.get("total"))
+                    || !java.util.Objects.equals(original.get("currency"), detail.get("currency"))) {
+                paidOrdersWithoutDate++;
+                mismatchedDetails++;
+                continue;
+            }
+            Object rawPaidAt = detail.get("paid_at");
+            LocalDate paidDay = rawPaidAt instanceof String v && !v.isBlank()
+                    ? utcDayOrNull(v) : null;
+            if (paidDay == null) {
+                paidOrdersWithoutDate++;
+            } else {
+                recoveredDates++;
+                dated.add(new DatedOrder(original, paidDay));
+            }
+        }
+
+        for (DatedOrder item : dated) {
+            if (item.day.isBefore(since) || item.day.isAfter(until)) continue;
+            Map<String, Object> order = item.row;
+            String currency = order.get("currency") instanceof String c ? c : "";
+            if (!currency.matches("[A-Z]{3}")) {
+                throw invalidOrders("Moeda ausente ou invalida em pedido pago.");
+            }
+            if (storeCurrency != null && !storeCurrency.equals(currency)) {
+                throw invalidOrders("Pedidos pagos com moedas diferentes; conversao indisponivel.");
+            }
+            storeCurrency = currency;
+            BigDecimal amount = monetary(order.get("total"));
+            paidOrders++;
+            paidRevenue = paidRevenue.add(amount);
+            DayAccumulator accumulator = days.computeIfAbsent(item.day, ignored -> new DayAccumulator());
+            accumulator.orders++;
+            accumulator.revenue = accumulator.revenue.add(amount);
+        }
+
         var warnings = new ArrayList<String>();
         // Nuvemshop paid_at instants are normalized to UTC; Meta Insights use ad-account days.
         warnings.add("REPORTING_TIMEZONE_MAY_DIFFER");
         if (!ordersPagesComplete) warnings.add("ORDERS_INCOMPLETE");
         if (paidOrdersWithoutDate > 0) warnings.add("PAID_AT_MISSING_OR_INVALID");
-        boolean ordersComplete = ordersPagesComplete && paidOrdersWithoutDate == 0;
+        if (recoveredDates > 0) warnings.add("PAID_AT_RECOVERED_FROM_DETAIL");
+        if (detailLimitReached) warnings.add("ORDER_DETAIL_LOOKUP_LIMIT");
+        if (mismatchedDetails > 0) warnings.add("ORDER_DETAIL_INCONSISTENT");
+        boolean ordersComplete = ordersPagesComplete && paidOrdersWithoutDate == 0
+                && mismatchedDetails == 0;
 
         // Keep the existing Meta aggregation unchanged, including its own pagination limits.
         MetaInsightsSummary meta = metaService.summary(since, until, 100, 20);
@@ -161,11 +236,24 @@ public class CommerceSummaryService {
         return new CommerceSummary(since, until, ordersComplete, metaComplete,
                 ordersComplete && metaComplete, pages, fetched,
                 ordersPagesComplete, paidOrdersWithoutDate,
+                cancelledIgnored, recoveredDates, detailsFetched, mismatchedDetails,
                 ordersPagesComplete ? paidOrders : null,
                 ordersPagesComplete ? paidRevenue.setScale(2, RoundingMode.HALF_UP) : null,
                 count, total,
                 ticket, storeCurrency, metaCurrency,
                 spend, metaRevenue, attributedRoas, mer, daily, List.copyOf(warnings));
+    }
+
+    private record DatedOrder(Map<String, Object> row, LocalDate day) {}
+
+    private static boolean matchingMonetary(Object listed, Object detailed) {
+        try {
+            return listed != null && detailed != null &&
+                    new BigDecimal(listed.toString()).compareTo(
+                            new BigDecimal(detailed.toString())) == 0;
+        } catch (NumberFormatException ex) {
+            return false;
+        }
     }
 
     private static String identifier(Object raw) {
