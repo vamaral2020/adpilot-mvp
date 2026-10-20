@@ -9,6 +9,13 @@ export const dynamic = "force-dynamic";
 
 type Params = { since?: string | string[]; until?: string | string[] };
 type Load<T> = { data?: T; error?: string };
+type NuvemshopStatus = {
+  status: "NOT_CONFIGURED" | "NOT_CONNECTED" | "CONNECTED";
+  configured: boolean;
+  storeId: string | null;
+  scopes: string | null;
+  connectedAt: string | null;
+};
 
 async function readApi<T>(path: string): Promise<Load<T>> {
   const username = process.env.ADPILOT_ADMIN_USERNAME ?? "";
@@ -64,7 +71,7 @@ function Sidebar() {
     <div className="sidebarSection sidebarSectionSecond">GESTÃO</div>
     <nav aria-label="Módulos planejados" className="sideNav">
       <span className="nav disabled"><Icon name="layers"/> Pedidos e produtos</span>
-      <span className="nav disabled"><Icon name="settings"/> Integrações</span>
+      <Link className="nav" href="#integracoes"><Icon name="settings"/> Integrações</Link>
     </nav>
     <div className="sidebarFooter">
       <span className="liveDot" aria-hidden="true"/> Ambiente local
@@ -188,11 +195,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
   const period = resolvePeriod(since, until);
 
   const query = new URLSearchParams({ since: period.since, until: period.until });
-  const [account, listing, summary] = await Promise.all([
+  const [account, listing, summary, shop] = await Promise.all([
     readApi<MetaAccount>("/api/v1/meta/account"),
     readApi<CampaignPage>("/api/v1/meta/campaigns?limit=100"),
     period.error ? Promise.resolve({ error: period.error } as Load<InsightSummary>) :
       readApi<InsightSummary>("/api/v1/meta/insights/summary?" + query.toString()),
+    readApi<NuvemshopStatus>("/api/v1/nuvemshop/status"),
   ]);
   const data = summary.data;
   const currency = account.data?.currency ?? "BRL";
@@ -268,9 +276,34 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
           <h2>Campanhas</h2><p>Não foi possível carregar os indicadores do período</p></div></div>
           <div className="emptyPanel">Corrija a integração ou o filtro de datas para consultar as campanhas.</div></section>}
 
+        <section className="shopPanel" id="integracoes" aria-labelledby="shop-heading">
+          <div className="shopHeader">
+            <div><div className="smallEyebrow">INTEGRAÇÕES</div><h2 id="shop-heading">Nuvemshop</h2>
+              <p>Conecte sua loja para consultar produtos e pedidos, sem modificar dados.</p></div>
+            <span className={"statusChip " + (shop.data?.status === "CONNECTED" ? "isActive" : "muted")}>
+              {shop.data?.status === "CONNECTED" ? "Conectada" :
+                shop.data?.status === "NOT_CONNECTED" ? "Aguardando autorização" : "Não configurada"}
+            </span>
+          </div>
+          {shop.data?.status === "CONNECTED" ? (
+            <p className="shopDetails"><span className="shopCheck">✓</span>
+              Loja <strong>{shop.data.storeId}</strong> conectada com acesso de leitura.
+              A API já permite consultar produtos, variantes e pedidos.</p>
+          ) : shop.data?.configured ? (
+            <div className="shopActions">
+              <p>Você será direcionado à Nuvemshop para aprovar as permissões de leitura.</p>
+              <form action="/api/nuvemshop/connect" method="POST">
+                <button type="submit">Conectar minha loja <span aria-hidden="true">↗</span></button>
+              </form>
+            </div>
+          ) : <p className="shopDetails">
+            {shop.error ?? "Configure o aplicativo, o callback HTTPS e as variáveis NUVEMSHOP_* no ambiente para habilitar a conexão."}
+          </p>}
+        </section>
+
         <footer className="dashboardFooter">
           <span>© AdPilot · Dados em tempo de consulta · Somente leitura</span>
-          <span>Meta Ads conectada {account.data ? "· " + account.data.id : ""} · Nuvemshop ainda não integrada</span>
+          <span>Meta Ads conectada {account.data ? "· " + account.data.id : ""} · Nuvemshop {shop.data?.status === "CONNECTED" ? "conectada" : "não conectada"}</span>
         </footer>
       </div>
     </div>

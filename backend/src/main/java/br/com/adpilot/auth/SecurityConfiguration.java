@@ -37,13 +37,14 @@ public class SecurityConfiguration {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // Apenas API stateless com HTTP Basic; nenhuma operacao de escrita na V1.
+            // API local: OAuth usa callback publico com state de uso unico; outros endpoints exigem Basic.
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .formLogin(AbstractHttpConfigurer::disable)
             .httpBasic(Customizer.withDefaults())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/nuvemshop/oauth/callback").permitAll()
                 .anyRequest().authenticated());
         return http.build();
     }

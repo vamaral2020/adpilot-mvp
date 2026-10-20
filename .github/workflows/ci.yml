@@ -60,6 +60,9 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:18080/actuator/health | grep -q '"status":"UP"'
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/v1/meta/status)" = "401"
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:18080/api/v1/meta/status | grep -q 'NOT_CONFIGURED'
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:18080/api/v1/nuvemshop/status | grep -q 'NOT_CONFIGURED'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/v1/nuvemshop/products)" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/v1/nuvemshop/oauth/callback)" = "503"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:13000/)" = "401"
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:13000/ | grep -q 'Painel de desempenho'
       - name: Collect Docker diagnostics on failure

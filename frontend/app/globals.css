@@ -62,3 +62,14 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
 @media(max-width:510px){.dashboardBody{padding:30px 16px}.topbar{padding:0 16px}.kpiGrid{gap:10px}.kpiCard{padding:16px;min-height:148px}.kpiValue{font-size:23px}.nav{font-size:0;gap:0;padding:10px}.nav svg{width:20px;height:20px}.brand{margin-right:auto}.breadcrumb{font-size:11px}.topBadge{display:none}.sectionIntro{align-items:flex-start;flex-direction:column}.miniMetrics,.chartPanel,.campaignPanel{padding:18px}.kpiTop{font-size:11px}.kpiIcon{width:28px;height:28px}}
 
 .loadingView{min-height:100vh;background:#0b101b}.loadingTop{display:flex;align-items:center;gap:12px;padding:28px clamp(22px,5vw,72px);border-bottom:1px solid #253246;color:#eaf2ff;font-size:21px;font-weight:700}.loadingLogo{background:#447bc6;border-radius:9px;padding:8px;color:white}.loadingTag{color:#829bb8;font-size:12px;font-weight:400;margin-left:auto}.loadingContent{max-width:1300px;margin:60px auto;padding:0 28px}.loadingStrip{height:17px;margin-bottom:16px;border-radius:8px}.loadingStrip.short{width:18%}.loadingStrip.large{width:45%;height:42px}.loadingStrip.medium{width:60%}.skeleton{background:linear-gradient(100deg,#162235 25%,#223552 50%,#162235 75%);background-size:200% 100%;animation:shimmer 1.6s linear infinite}.loadingCards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:50px 0 25px}.loadingCard{height:160px;border-radius:14px}.loadingPanels{display:grid;grid-template-columns:1fr 1fr;gap:16px}.loadingPanels div{height:240px;border-radius:14px}.loadingContent p{font-size:12px;color:#8799af;margin-top:30px}@keyframes shimmer{to{background-position-x:-200%}}@media(prefers-reduced-motion:reduce){.skeleton{animation:none}}@media(max-width:800px){.loadingCards{grid-template-columns:repeat(2,1fr)}.loadingPanels{grid-template-columns:1fr}}
+
+.shopPanel{margin-top:20px;background:var(--panel);border:1px solid #29394e;border-radius:14px;padding:24px;scroll-margin-top:18px}
+.shopHeader{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.shopHeader h2{font-size:17px;margin:9px 0 7px;letter-spacing:-.4px}
+.shopHeader p,.shopDetails,.shopActions p{color:var(--muted);font-size:12px;line-height:1.65;margin:0}
+.shopDetails,.shopActions{border-top:1px solid #2b3a4e;margin-top:18px;padding-top:17px}
+.shopActions{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px}
+.shopActions button{color:#09162a;background:#82b6f5;border:1px solid #b2d4fa;border-radius:9px;padding:12px 16px;font-weight:750;cursor:pointer}
+.shopActions button:hover{background:#a9cefa}
+.shopCheck{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#165846;color:#9ff0cc;font-weight:700;margin-right:10px}
+@media(max-width:700px){.shopPanel{padding:18px}.shopActions button{width:100%}}
