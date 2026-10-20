@@ -21,6 +21,11 @@ import org.springframework.web.client.RestClientResponseException;
 @Component
 public class NuvemshopClient {
     private static final String PRODUCT_FIELDS = "id,name,handle,variants";
+    private static final String ORDER_SYNC_FIELDS =
+            "id,number,status,payment_status,total,currency,created_at,updated_at,paid_at";
+    private static final List<String> ORDER_SYNC_PROJECTION = List.of(
+            "id","number","status","payment_status","total","currency",
+            "created_at","updated_at","paid_at");
     private static final String ORDER_FIELDS =
             "id,number,status,payment_status,shipping_status,total,currency,created_at,paid_at,products";
     // Audit projection excludes names, amounts, addresses, transaction details and PII.
@@ -62,6 +67,18 @@ public class NuvemshopClient {
     public NuvemshopPage orders(int page, int perPage) {
         return read("orders", ORDER_FIELDS, page, perPage, ORDER_PROJECTION,
                 "products", ORDER_ITEM_PROJECTION);
+    }
+
+    /** Time-bounded incremental window, no customer or line-item PII. */
+    public NuvemshopPage ordersUpdatedBetween(java.time.Instant since,
+            java.time.Instant until, int page, int perPage) {
+        if (since == null || until == null || !since.isBefore(until)) {
+            throw new NuvemshopException(HttpStatus.BAD_REQUEST, "INVALID_SYNC_WINDOW",
+                    "Janela incremental invalida.");
+        }
+        return read("orders", ORDER_SYNC_FIELDS, page, perPage, ORDER_SYNC_PROJECTION,
+                "", List.of(), Map.of("updated_at_min", since.toString(),
+                        "updated_at_max", until.toString()));
     }
 
     private static final String PAID_DETAIL_FIELDS =
@@ -160,6 +177,12 @@ public class NuvemshopClient {
 
     private NuvemshopPage read(String resource, String fields, int page, int perPage,
                                List<String> allowed, String nested, List<String> allowedNested) {
+        return read(resource, fields, page, perPage, allowed, nested, allowedNested, Map.of());
+    }
+
+    private NuvemshopPage read(String resource, String fields, int page, int perPage,
+                               List<String> allowed, String nested, List<String> allowedNested,
+                               Map<String, String> filters) {
         if (page < 1 || page > 100 || perPage < 1 || perPage > 100
                 || (long) page * perPage > 10_000) {
             throw new NuvemshopException(HttpStatus.BAD_REQUEST, "NUVEMSHOP_INVALID_PAGINATION",
@@ -170,8 +193,17 @@ public class NuvemshopClient {
                         "Conecte a loja Nuvemshop antes de consultar produtos e pedidos."));
         String token = crypto.decrypt(installation.tokenEncrypted());
         String path = "/" + settings.apiVersion() + "/" + installation.storeId() + "/" + resource;
-        URI uri = URI.create(settings.apiBase() + path + "?page=" + page + "&per_page=" + perPage
-                + "&fields=" + URLEncoder.encode(fields, StandardCharsets.UTF_8));
+        StringBuilder query = new StringBuilder(settings.apiBase()).append(path)
+                .append("?page=").append(page).append("&per_page=").append(perPage)
+                .append("&fields=").append(URLEncoder.encode(fields, StandardCharsets.UTF_8));
+        filters.forEach((key, value) -> {
+            if (!key.equals("updated_at_min") && !key.equals("updated_at_max")) {
+                throw new IllegalArgumentException("Filtro nao permitido");
+            }
+            query.append('&').append(key).append('=')
+                    .append(URLEncoder.encode(value, StandardCharsets.UTF_8));
+        });
+        URI uri = URI.create(query.toString());
         try {
             var result = client.get().uri(uri)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
