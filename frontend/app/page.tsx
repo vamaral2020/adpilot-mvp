@@ -196,7 +196,7 @@ function CampaignTable({ summary, listing, currency }: {
       <p>Não foram encontrados dados para esse intervalo de datas.</p></div>}
     {listing?.after && <div className="tableFootnote">A lista de status mostra apenas a primeira página do catálogo de campanhas. Os Insights consolidados são independentes dela.</div>}
     {!media && <div className="tableFootnote" role="status">Participação no investimento e custo por compra ocultos: totais da Meta incompletos ou inconsistentes.</div>}
-    <div className="tableFootnote">Compras, receitas e custo por compra são **atribuídos pela Meta**; não correspondem a pedidos conciliados com a Nuvemshop. Status é o estado atual da campanha, não necessariamente o estado no período.</div>
+    <div className="tableFootnote">Compras, receitas e custo por compra são atribuídos pela Meta; não correspondem a pedidos conciliados com a Nuvemshop. Status é o estado atual da campanha, não necessariamente o estado no período.</div>
   </section>;
 }
 

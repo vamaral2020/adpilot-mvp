@@ -447,3 +447,46 @@ limites da API antes de ampliar o uso. O MER é relação entre toda a
 receita paga **não cancelada** na loja e o gasto na Meta; não constitui
 ROAS atribuído nem lucro líquido. O tratamento de estornos tardios,
 tarifas e ajustes de períodos será feito em evolução específica.
+
+## PR 013 — Eficiência de mídia e comparação de fontes
+
+O dashboard adiciona a seção **Eficiência do investimento** usando
+exclusivamente a consolidação da Meta e a consolidação comercial de
+pedidos **pagos e não cancelados** (PR 012). É um diagnóstico
+somente leitura; não modifica campanhas nem pedidos.
+
+A tabela de campanhas passa a exibir **% do gasto Meta**,
+**receita atribuída Meta**, **custo por compra atribuída** e
+**ROAS atribuído**, além de investimento, cliques, compras e status.
+Custo por compra atribuída = investimento Meta / compras atribuídas
+pela Meta (`null` sem compras). Não é custo de aquisição de cliente
+(CAC) e não pode ser confundido com CPA baseado em pedidos conciliados.
+
+A seção agrega **investimento nas campanhas que gastaram sem ter compra
+atribuída pela Meta** (não significa que foram ineficientes), a
+concentração do investimento na campanha com maior gasto, e o custo
+médio da Meta por compra atribuída, sempre com período idêntico ao
+filtro. Sem gasto, percentuais e razões não são fabricados.
+
+O comparativo mostra **duas fontes independentes**:
+- Nuvemshop: receita e número de pedidos `payment_status=paid` que
+  não estejam com `status=cancelled`, filtrados pelo `paid_at` em UTC.
+- Meta: receitas e compras atribuídas de Insights por campanhas,
+  segundo as configurações de atribuição da conta.
+
+**Não** calcula diferença entre essas receitas como
+"faturamento não atribuído", **não** vincula individualmente pedidos
+a campanhas, nem recomenda automaticamente aumentar ou cortar orçamento.
+MER da loja = receita paga não cancelada / gasto na Meta; ROAS atribuído
+Meta = receita atribuída / gasto na Meta. Nenhuma razão representa lucro.
+
+A comparação entre fontes só aparece se ambos os relatórios estão
+completos, os intervalos e as moedas coincidem, e as duas consultas
+concordam nos totais de gasto e receita atribuída Meta. A análise
+de campanhas requer paginação Meta completa, métricas finitas não
+negativas, IDs distintos e somas coerentes com o agregado da conta;
+caso contrário, os indicadores derivados são ocultados com explicação.
+
+Não há novas APIs, migrations, escopos OAuth, permissões ou
+credenciais. Implementação concentrada na apresentação e em funções
+puras testadas por Node.
