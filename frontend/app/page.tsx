@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { analyzeMedia, compareSources } from "../lib/performance";
 import {
   money, number, percentage, multiplier, presetPeriod, readableDate, resolvePeriod, finite,
   type MetaAccount, type CampaignPage, type Campaign, type InsightSummary,
@@ -71,6 +72,7 @@ function Sidebar() {
     </nav>
     <div className="sidebarSection sidebarSectionSecond">GESTÃO</div>
     <nav aria-label="Módulos planejados" className="sideNav">
+      <Link className="nav" href="#analise-investimento"><Icon name="chart"/> Eficiência de mídia</Link>
       <Link className="nav" href="#comercio"><Icon name="layers"/> Desempenho comercial</Link>
       <Link className="nav" href="#auditoria"><Icon name="chart"/> Auditoria de pagamentos</Link>
       <Link className="nav" href="#integracoes"><Icon name="settings"/> Integrações</Link>
@@ -148,37 +150,44 @@ function Comparison({ summary, currency }: { summary: InsightSummary; currency: 
 function CampaignTable({ summary, listing, currency }: {
   summary: InsightSummary; listing?: CampaignPage; currency: string;
 }) {
-  const statusById = new Map((listing?.data ?? []).map(c => [c.id, c]));
   const insightById = new Map(summary.campaigns.map(c => [c.campaignId, c]));
-  // Include campaigns with no Insights in the selected period when their catalogue page is available.
+  const statusById = new Map((listing?.data ?? []).map(c => [c.id, c]));
   const ids = [...new Set([...insightById.keys(), ...statusById.keys()])];
+  const media = analyzeMedia(summary);
+  const analyzedById = new Map((media?.rows ?? []).map(c => [c.id, c]));
   ids.sort((a, b) => (finite(insightById.get(b)?.metrics.spend) ?? 0)
-    - (finite(insightById.get(a)?.metrics.spend) ?? 0));
+    - (finite(insightById.get(a)?.metrics.spend) ?? 0) || a.localeCompare(b));
   const highest = Math.max(0, ...ids.map(id => finite(insightById.get(id)?.metrics.spend) ?? 0));
   return <section className="campaignPanel" id="campanhas" aria-labelledby="campaign-heading">
     <div className="panelHeader tablePanelHeader">
-      <div><div className="smallEyebrow">DESEMPENHO</div><h2 id="campaign-heading">Campanhas</h2>
-        <p>Ordenadas pelo investimento no período selecionado</p></div>
+      <div><div className="smallEyebrow">EFICIÊNCIA DA META ADS</div><h2 id="campaign-heading">Desempenho por campanha</h2>
+        <p>Investimento e compras atribuídas pela Meta no período selecionado</p></div>
       <span className="panelTag">{ids.length} {ids.length === 1 ? "campanha" : "campanhas"}</span>
     </div>
-    {ids.length ? <div className="tableScroll"><table>
-      <thead><tr><th>Campanha</th><th>Status</th><th>Investimento</th><th>Cliques</th><th>Compras</th><th>ROAS</th></tr></thead>
+    {ids.length ? <div className="tableScroll"><table className="efficiencyTable">
+      <thead><tr><th>Campanha</th><th>Status</th><th>Investimento</th><th>% do gasto</th>
+        <th>Cliques</th><th>Compras Meta</th><th>Receita atribuída</th><th>Custo/compra Meta</th><th>ROAS Meta</th></tr></thead>
       <tbody>{ids.map(id => {
         const c = statusById.get(id);
         const insight = insightById.get(id);
         const metrics: InsightMetrics | undefined = insight?.metrics;
-        const spend = finite(metrics?.spend) ?? 0;
+        const calculated = analyzedById.get(id);
+        const spend = finite(metrics?.spend);
         return <tr key={id}>
           <td><div className="campaignCell"><span className="campaignAvatar"><Icon name="activity"/></span>
             <span className="campaignDetails"><strong>{c?.name ?? insight?.campaignName ?? id}</strong>
               <small>ID {id}</small></span></div></td>
           <td><CampaignStatus campaign={c}/></td>
           <td><div className="spendCell"><strong>{money(spend, currency)}</strong>
-            <div className="tinyTrack"><span style={{width: highest ? (spend / highest * 100) + "%" : "0%"}}/></div>
+            <div className="tinyTrack"><span style={{width: highest && spend !== null
+              ? (spend / highest * 100) + "%" : "0%"}}/></div>
           </div></td>
-          <td>{number(metrics?.clicks ?? 0)}</td>
-          <td>{number(metrics?.purchases ?? 0)}</td>
-          <td><span className="roasValue">{multiplier(metrics?.roas)}</span></td>
+          <td>{calculated ? percentage(calculated.spendShare) : "—"}</td>
+          <td>{metrics ? number(metrics.clicks) : "—"}</td>
+          <td>{metrics ? number(metrics.purchases, 2) : "—"}</td>
+          <td>{metrics ? money(metrics.purchaseValue, currency) : "—"}</td>
+          <td>{calculated ? money(calculated.costPerAttributedPurchase, currency) : "—"}</td>
+          <td><span className="roasValue">{metrics ? multiplier(metrics.roas) : "—"}</span></td>
         </tr>;
       })}</tbody>
     </table></div> :
@@ -186,7 +195,69 @@ function CampaignTable({ summary, listing, currency }: {
       <strong>Nenhuma campanha no período</strong>
       <p>Não foram encontrados dados para esse intervalo de datas.</p></div>}
     {listing?.after && <div className="tableFootnote">A lista de status mostra apenas a primeira página do catálogo de campanhas. Os Insights consolidados são independentes dela.</div>}
-    <div className="tableFootnote">Compras e receita são eventos atribuídos pela Meta; não representam pedidos conciliados com a loja.</div>
+    {!media && <div className="tableFootnote" role="status">Participação no investimento e custo por compra ocultos: totais da Meta incompletos ou inconsistentes.</div>}
+    <div className="tableFootnote">Compras, receitas e custo por compra são atribuídos pela Meta; não correspondem a pedidos conciliados com a Nuvemshop. Status é o estado atual da campanha, não necessariamente o estado no período.</div>
+  </section>;
+}
+
+function MediaAnalysisPanel({ meta, store, currency }: {
+  meta?: InsightSummary; store?: CommerceSummary; currency?: string;
+}) {
+  const media = analyzeMedia(meta);
+  const currencyOk = typeof currency === "string" && /^[A-Z]{3}$/.test(currency);
+  const comparable = currencyOk && store?.storeCurrency === currency
+    ? compareSources(meta, store) : null;
+  return <section className="mediaAnalysis" id="analise-investimento"
+      aria-labelledby="media-analysis-heading">
+    <div className="panelHeader">
+      <div><div className="smallEyebrow">INTELIGÊNCIA COMERCIAL · SOMENTE LEITURA</div>
+        <h2 id="media-analysis-heading">Eficiência do investimento</h2>
+        <p>Diagnóstico de investimento, compras atribuídas e vendas efetivadas — sem atribuição artificial.</p></div>
+      <span className="panelTag">{media && currencyOk ? "Meta consolidada" : "Análise indisponível"}</span>
+    </div>
+    {!media || !currencyOk ? <div className="commerceEmpty" role="status">
+      Para calcular a eficiência, precisamos de Insights completos da Meta e da moeda da conta confirmada.
+      Dados parciais não produzem indicadores conclusivos.
+    </div> : <>
+      <div className="analysisStatGrid">
+        <div><span>Custo por compra atribuída · Meta</span>
+          <strong>{money(media.accountCostPerAttributedPurchase, currency)}</strong>
+          <small>Gasto total Meta / compras atribuídas; não é CAC real.</small></div>
+        <div><span>Gasto sem compras atribuídas · Meta</span>
+          <strong>{money(media.spendWithoutAttributedPurchases, currency)}</strong>
+          <small>{number(media.campaignsWithoutAttributedPurchases)} campanha(s) com gasto e zero compras atribuídas.</small></div>
+        <div><span>Campanha de maior investimento</span>
+          <strong className="analysisName">{media.topSpender?.name ?? "—"}</strong>
+          <small>{media.topSpender ? money(media.topSpender.spend, currency)
+            + " · " + percentage(media.topSpender.spendShare) + " do gasto" : "Sem investimento no período"}</small></div>
+      </div>
+      {comparable ? <div className="sourceComparison">
+        <div className="sourceColumn">
+          <span className="smallEyebrow">NUVEMSHOP · EFETIVADAS</span>
+          <h3>{money(comparable.paidRevenue, currency)}</h3>
+          <p>{number(comparable.paidOrders)} vendas pagas, não canceladas, agrupadas por paid_at (UTC).</p>
+        </div>
+        <div className="sourceColumn">
+          <span className="smallEyebrow">META · ATRIBUIÇÃO</span>
+          <h3>{money(comparable.attributedRevenue, currency)}</h3>
+          <p>{number(comparable.attributedPurchases, 2)} compras atribuídas nos Insights da Meta.</p>
+        </div>
+        <div className="sourceColumn">
+          <span className="smallEyebrow">INDICADORES INDEPENDENTES</span>
+          <h3>MER {multiplier(comparable.mer)}</h3>
+          <p>ROAS atribuído pela Meta: {multiplier(comparable.attributedRoas)}.</p>
+        </div>
+      </div> : <p className="analysisUnverified" role="status">
+        Comparação entre loja e Meta indisponível: é necessário ter períodos iguais,
+        moedas coincidentes, paginação completa e totais da Meta consistentes nas duas consultas.
+      </p>}
+      <p className="analysisMethod">
+        <strong>Interpretação:</strong> uma campanha sem compras atribuídas não é necessariamente
+        ineficiente: a atribuição depende de instrumentação, janela de conversão e eventos.
+        Os totais da loja não estão vinculados a campanhas. Não recomendamos alterar
+        orçamento ou pausar anúncios automaticamente com esses indicadores.
+      </p>
+    </>}
   </section>;
 }
 
@@ -451,6 +522,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
         <section className="campaignPanel" id="campanhas"><div className="panelHeader"><div><div className="smallEyebrow">DESEMPENHO</div>
           <h2>Campanhas</h2><p>Não foi possível carregar os indicadores do período</p></div></div>
           <div className="emptyPanel">Corrija a integração ou o filtro de datas para consultar as campanhas.</div></section>}
+
+        <MediaAnalysisPanel meta={data} store={commerce.data} currency={account.data?.currency}/>
 
         <CommercePanel summary={commerce.data} error={commerce.error} currency={currency}/>
         {shop.data?.status === "CONNECTED" &&

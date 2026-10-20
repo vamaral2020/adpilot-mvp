@@ -117,3 +117,24 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
 @media(max-width:1200px){.auditGroups{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:800px){.auditStats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:550px){.auditPanel{padding:18px}.auditStats,.auditGroups{grid-template-columns:1fr}}
+
+
+/* PR 013 — explicit separation of Meta attribution and paid store sales. */
+.efficiencyTable{min-width:1220px}
+.mediaAnalysis{margin-top:20px;background:var(--panel);border:1px solid #30425b;border-radius:14px;padding:24px;scroll-margin-top:16px}
+.mediaAnalysis .panelHeader{flex-wrap:wrap}
+.analysisStatGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:21px}
+.analysisStatGrid>div{border:1px solid #30445c;border-radius:11px;background:#142236;padding:19px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.analysisStatGrid span{font-size:11px;color:#a2b9d3;line-height:1.45}
+.analysisStatGrid strong{font-size:25px;letter-spacing:-.6px;font-variant-numeric:tabular-nums;color:#e7f0ff;overflow-wrap:anywhere}
+.analysisStatGrid .analysisName{font-size:17px;line-height:1.4;letter-spacing:0}
+.analysisStatGrid small{font-size:11px;color:#829cb8;line-height:1.5}
+.sourceComparison{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:15px}
+.sourceColumn{background:#101d2d;border:1px solid #2b3d51;border-radius:11px;padding:19px;min-width:0}
+.sourceColumn h3{font-size:24px;line-height:1.25;letter-spacing:-.4px;margin:13px 0 8px;overflow-wrap:anywhere}
+.sourceColumn p{color:#8ca2ba;font-size:11px;line-height:1.6;margin:0}
+.analysisUnverified{color:#e7c596;background:#2d291f;border:1px solid #625039;border-radius:10px;padding:15px 17px;font-size:12px;line-height:1.6;margin:18px 0}
+.analysisMethod{color:#9fb3cd;border-top:1px solid #30425b;padding-top:15px;margin:18px 0 0;line-height:1.7;font-size:11px}
+.analysisMethod strong{color:#c9d9ec}
+@media(max-width:1040px){.analysisStatGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.sourceComparison{grid-template-columns:1fr}}
+@media(max-width:700px){.analysisStatGrid{grid-template-columns:1fr}.mediaAnalysis{padding:18px}.sourceColumn h3{font-size:21px}}
