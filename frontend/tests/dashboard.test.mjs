@@ -67,3 +67,13 @@ test("MER is suppressed for partial periods and different currencies", () => {
   assert.equal(verifiedMer({ ...snapshot, storeCurrency: null }), null);
   assert.equal(verifiedMer({ ...snapshot, mer: null }), null);
 });
+
+test("MER never appears when paid orders have unknown dates", () => {
+  const partial = {
+    ordersComplete: false, metaComplete: true, storeCurrency: "BRL",
+    metaCurrency: "BRL", mediaSpend: 130, mer: null,
+    ordersPagesComplete: true, paidOrdersWithoutDate: 2,
+    datedPaidOrders: 3, datedPaidRevenue: 500,
+  };
+  assert.equal(verifiedMer(partial), null);
+});

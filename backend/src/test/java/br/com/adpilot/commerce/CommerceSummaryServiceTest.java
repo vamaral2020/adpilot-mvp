@@ -76,6 +76,10 @@ class CommerceSummaryServiceTest {
         var result = service.summary(SINCE, UNTIL, 100, 20);
         assertTrue(result.complete());
         assertTrue(result.ordersComplete());
+        assertTrue(result.ordersPagesComplete());
+        assertEquals(0, result.paidOrdersWithoutDate());
+        assertEquals(2L, result.datedPaidOrders());
+        assertEquals(new BigDecimal("300.00"), result.datedPaidRevenue());
         assertEquals(2, result.pagesFetched());
         assertEquals(4, result.ordersFetched());
         assertEquals(2L, result.paidOrders());
@@ -181,12 +185,7 @@ class CommerceSummaryServiceTest {
         verifyNoInteractions(shop);
     }
 
-    @Test void rejectsMissingPaidAtNegativeTotalsAndMixedCurrencies() {
-        when(shop.orders(1, 100)).thenReturn(page(1, null, false,
-                order(1, "paid", null, "100.00", "BRL")));
-        assertEquals("NUVEMSHOP_INVALID_ORDER_DATA",
-                assertThrows(NuvemshopException.class,
-                        () -> service.summary(SINCE, UNTIL, 100, 20)).code());
+    @Test void rejectsNegativeTotalsAndMixedCurrencies() {
         when(shop.orders(1, 100)).thenReturn(page(1, null, false,
                 order(1, "paid", "2026-10-18T12:00:00Z", "-1.00", "BRL")));
         assertEquals("NUVEMSHOP_INVALID_ORDER_DATA",
@@ -199,6 +198,72 @@ class CommerceSummaryServiceTest {
                 assertThrows(NuvemshopException.class,
                         () -> service.summary(SINCE, UNTIL, 100, 20)).code());
         verifyNoInteractions(metaService);
+    }
+
+    @Test void paidOrderWithoutPaidAtDoesNotAbortAndSuppressesFinalSalesAndMer() {
+        when(shop.orders(1, 100)).thenReturn(page(1, 3L, false,
+                order(1, "paid", "2026-10-18T10:00:00Z", "200.00", "BRL"),
+                order(2, "paid", null, "900.00", "BRL"),
+                order(3, "pending", null, "123.00", "BRL")));
+
+        var result = service.summary(SINCE, UNTIL, 100, 20);
+        assertTrue(result.ordersPagesComplete());
+        assertFalse(result.ordersComplete());
+        assertFalse(result.complete());
+        assertEquals(1, result.paidOrdersWithoutDate());
+        assertEquals(1L, result.datedPaidOrders());
+        assertEquals(new BigDecimal("200.00"), result.datedPaidRevenue());
+        assertNull(result.paidOrders());
+        assertNull(result.paidRevenue());
+        assertNull(result.averageTicket());
+        assertNull(result.mer());
+        assertTrue(result.daily().isEmpty());
+        assertTrue(result.warnings().contains("PAID_AT_MISSING_OR_INVALID"));
+        assertFalse(result.warnings().contains("ORDERS_INCOMPLETE"));
+        verify(metaService).summary(SINCE, UNTIL, 100, 20);
+    }
+
+    @Test void blankAndMalformedPaidAtAreCountedWithoutAborting() {
+        when(shop.orders(1, 100)).thenReturn(page(1, 4L, false,
+                order(1, "paid", "", "120.00", "BRL"),
+                order(2, "paid", "invalid-date", "120.00", "BRL"),
+                order(3, "paid", "2026-10-18T11:00:00Z", "80.00", "BRL"),
+                order(4, "pending", null, "100.00", "BRL")));
+
+        var result = service.summary(SINCE, UNTIL, 100, 20);
+        assertEquals(2, result.paidOrdersWithoutDate());
+        assertEquals(1L, result.datedPaidOrders());
+        assertEquals(new BigDecimal("80.00"), result.datedPaidRevenue());
+        assertFalse(result.ordersComplete());
+        assertNull(result.mer());
+    }
+
+    @Test void undatedPaidOrderOutsideFilterCannotSafelyBeAssignedToAnyDay() {
+        when(shop.orders(1, 100)).thenReturn(page(1, 2L, false,
+                order(1, "paid", "2026-01-01T12:00:00Z", "200.00", "BRL"),
+                order(2, "paid", null, "500.00", "BRL")));
+
+        var result = service.summary(SINCE, UNTIL, 100, 20);
+        assertEquals(0L, result.datedPaidOrders());
+        assertEquals(new BigDecimal("0.00"), result.datedPaidRevenue());
+        assertNull(result.paidRevenue());
+        assertNull(result.mer());
+        assertEquals(1, result.paidOrdersWithoutDate());
+    }
+
+    @Test void paginationIncompleteDoesNotShowEvenDatedPartialTotals() {
+        when(shop.orders(1, 100)).thenReturn(page(1, 400L, true,
+                order(1, "paid", "2026-10-18T12:00:00Z", "200.00", "BRL"),
+                order(2, "paid", null, "50.00", "BRL")));
+        var result = service.summary(SINCE, UNTIL, 100, 1);
+        assertFalse(result.ordersPagesComplete());
+        assertEquals(1, result.paidOrdersWithoutDate());
+        assertNull(result.datedPaidOrders());
+        assertNull(result.datedPaidRevenue());
+        assertNull(result.paidRevenue());
+        assertNull(result.mer());
+        assertTrue(result.warnings().contains("PAID_AT_MISSING_OR_INVALID"));
+        assertTrue(result.warnings().contains("ORDERS_INCOMPLETE"));
     }
 
     @Test void refusesEmptyPageWithNextLink() {
