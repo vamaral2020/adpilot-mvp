@@ -35,6 +35,22 @@ export type Campaign = {
   daily_budget?: string;
 };
 
+export type MetaPurchaseAudit = {
+  since: string; until: string; complete: boolean;
+  pagesFetched: number; recordsFetched: number;
+  selectedPurchases: number | null; selectedRevenue: number | null;
+  rowsWithoutPurchaseActions: number;
+  rowsWithoutPurchaseValues: number;
+  rowsWithDifferentSelectedTypes: number;
+  selectedCountTypes: Record<string, number>;
+  selectedValueTypes: Record<string, number>;
+  actionBreakdown: {
+    actionType: string; rowsWithCount: number; count: number;
+    rowsWithValue: number; value: number;
+  }[];
+  warnings: string[];
+};
+
 export type PaymentAudit = {
   complete: boolean;
   pagesFetched: number;
@@ -56,6 +72,23 @@ export type PaymentAudit = {
   warnings: string[];
 };
 export type AuditBucket = { label: string; count: number };
+
+/**
+ * The diagnostic and the regular Insights query use independent HTTP reads.
+ * A comparison is meaningful only with complete responses for identical dates.
+ */
+export function purchaseAuditConsistency(audit?: MetaPurchaseAudit,
+    insight?: InsightSummary): "match" | "mismatch" | "unavailable" {
+  if (!audit?.complete || !insight?.complete || audit.since !== insight.since
+      || audit.until !== insight.until
+      || !Number.isFinite(audit.selectedPurchases)
+      || !Number.isFinite(audit.selectedRevenue)
+      || !Number.isFinite(insight.totals?.purchases)
+      || !Number.isFinite(insight.totals?.purchaseValue)) return "unavailable";
+  return Math.abs(audit.selectedPurchases! - insight.totals.purchases!) < 0.011
+      && Math.abs(audit.selectedRevenue! - insight.totals.purchaseValue!) < 0.011
+    ? "match" : "mismatch";
+}
 
 /** Coverage is only a store-wide statistic if all pages were fetched. */
 export function auditMissingPercentage(audit?: PaymentAudit): number | null {

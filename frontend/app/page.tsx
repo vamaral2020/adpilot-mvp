@@ -4,7 +4,7 @@ import {
   money, number, percentage, multiplier, presetPeriod, readableDate, resolvePeriod, finite,
   type MetaAccount, type CampaignPage, type Campaign, type InsightSummary,
   type InsightMetrics, type Period, type CommerceSummary, type PaymentAudit,
-  type AuditBucket, auditMissingPercentage, verifiedMer
+  type AuditBucket, type MetaPurchaseAudit, auditMissingPercentage, verifiedMer, purchaseAuditConsistency
 } from "../lib/dashboard";
 
 export const dynamic = "force-dynamic";
@@ -74,6 +74,7 @@ function Sidebar() {
     <nav aria-label="Módulos planejados" className="sideNav">
       <Link className="nav" href="#analise-investimento"><Icon name="chart"/> Eficiência de mídia</Link>
       <Link className="nav" href="#comercio"><Icon name="layers"/> Desempenho comercial</Link>
+      <Link className="nav" href="#conversoes"><Icon name="activity"/> Eventos Meta</Link>
       <Link className="nav" href="#auditoria"><Icon name="chart"/> Auditoria de pagamentos</Link>
       <Link className="nav" href="#integracoes"><Icon name="settings"/> Integrações</Link>
     </nav>
@@ -379,7 +380,88 @@ function AuditBuckets({ heading, rows }: { heading: string; rows: AuditBucket[] 
   </div>;
 }
 
-function PaymentAuditPanel({ audit, error }: { audit?: PaymentAudit; error?: string }) {
+const PURCHASE_LABELS: Record<string, string> = {
+  purchase: "purchase",
+  omni_purchase: "omni_purchase",
+  "offsite_conversion.fb_pixel_purchase": "Pixel purchase (taxonomia Meta)",
+  onsite_web_purchase: "onsite_web_purchase",
+};
+
+function MetaPurchaseDiagnosticPanel({ audit, meta, currency, error }: {
+  audit?: MetaPurchaseAudit; meta?: InsightSummary; currency?: string; error?: string;
+}) {
+  const consistency = purchaseAuditConsistency(audit, meta);
+  return <section className="conversionAuditPanel" id="conversoes" aria-labelledby="conversion-audit-heading">
+    <div className="panelHeader">
+      <div><div className="smallEyebrow">META ADS · DIAGNÓSTICO DE ATRIBUIÇÃO</div>
+        <h2 id="conversion-audit-heading">Eventos de compra reportados</h2>
+        <p>Como a Meta classifica os eventos Purchase nos Insights. Não é diagnóstico da instalação do Pixel/CAPI.</p></div>
+      <span className="panelTag">{audit?.complete ? "Leitura completa" : "Diagnóstico parcial"}</span>
+    </div>
+    {!audit ? <div className="commerceEmpty" role="status">
+      {error ?? "Auditoria de compras atribuídas indisponível."}
+    </div> : <>
+      {consistency !== "unavailable" ? <div className={"conversionMatch " + (consistency === "match" ? "ok" : "caution")}>
+        {consistency === "match"
+          ? "Contagem de compras e receita atribuída coincidem com o resumo de Insights."
+          : "A auditoria e o resumo Meta retornaram totais diferentes. Verifique eventos, datas e momento da consulta."}
+      </div> : <div className="conversionMatch caution">
+        Comparação inconclusiva: a paginação ou o período dos Insights não estão completos e coincidentes.
+      </div>}
+      <div className="conversionStats">
+        <div><span>Compras selecionadas pela regra atual</span>
+          <strong>{audit.complete ? number(audit.selectedPurchases, 2) : "—"}</strong></div>
+        <div><span>Receita selecionada pela regra atual</span>
+          <strong>{audit.complete ? currency && /^[A-Z]{3}$/.test(currency)
+            ? money(audit.selectedRevenue, currency) : number(audit.selectedRevenue, 2) + " (moeda não informada)" : "—"}</strong></div>
+        <div><span>Linhas com taxonomias diferentes entre contagem e valor</span>
+          <strong>{number(audit.rowsWithDifferentSelectedTypes)}</strong></div>
+      </div>
+      <div className="conversionSourceBreakdown">
+        <div><strong>Tipos escolhidos para a contagem</strong>
+          {Object.entries(audit.selectedCountTypes).length
+            ? Object.entries(audit.selectedCountTypes).map(([type, count]) =>
+                <p key={type}>{PURCHASE_LABELS[type] ?? "Outra categoria"}:
+                  {" "}{number(count)} linha(s)</p>)
+            : <p>Nenhuma compra atribuída identificada.</p>}</div>
+        <div><strong>Tipos escolhidos para o valor</strong>
+          {Object.entries(audit.selectedValueTypes).length
+            ? Object.entries(audit.selectedValueTypes).map(([type, count]) =>
+                <p key={type}>{PURCHASE_LABELS[type] ?? "Outra categoria"}:
+                  {" "}{number(count)} linha(s)</p>)
+            : <p>Nenhuma receita atribuída identificada.</p>}</div>
+      </div>
+      <div className="tableScroll">
+        <table className="conversionTaxonomyTable">
+          <thead><tr><th>Taxonomia de evento</th><th>Linhas com contagem</th><th>Contagem reportada</th>
+            <th>Linhas com valor</th><th>Valor reportado</th></tr></thead>
+          <tbody>{audit.actionBreakdown.map(item => <tr key={item.actionType}>
+            <td>{PURCHASE_LABELS[item.actionType] ?? "Outra categoria permitida"}</td>
+            <td>{number(item.rowsWithCount)}</td><td>{number(item.count, 2)}</td>
+            <td>{number(item.rowsWithValue)}</td>
+            <td>{number(item.value, 2)}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+      <p className="conversionAuditNote">
+        Categorias como purchase, omni_purchase e pixel_purchase podem representar o mesmo evento.
+        <strong> Não some as linhas da tabela.</strong> A regra atual utiliza a primeira categoria
+        disponível por linha, priorizando purchase. Valores e contagens podem selecionar
+        categorias diferentes; nenhuma dessas métricas confirma pagamento na Nuvemshop.
+        Pixel, Conversions API, Event Match Quality, event_id e deduplicação exigem
+        validação no Gerenciador de Eventos da Meta ou em registros próprios de eventos.
+      </p>
+      {!audit.complete && <p className="conversionAuditNote">Os números acima são apenas
+        uma amostra das páginas consultadas; totais gerais ficam indisponíveis.</p>}
+      <p className="commerceFoot">{number(audit.recordsFetched)} linhas analisadas em
+        {" "}{number(audit.pagesFetched)} páginas de Insights.</p>
+    </>}
+  </section>;
+}
+
+function PaymentAuditPanel({ audit, commerce, error }: {
+  audit?: PaymentAudit; commerce?: CommerceSummary; error?: string;
+}) {
   const missing = audit ? audit.paidWithoutDate + audit.paidWithInvalidDate : 0;
   const pct = auditMissingPercentage(audit);
   return <section className="auditPanel" id="auditoria" aria-labelledby="audit-heading">
@@ -404,15 +486,25 @@ function PaymentAuditPanel({ audit, error }: { audit?: PaymentAudit; error?: str
           <small>{audit.pagesFetched} página(s) consultada(s)</small></div>
         <div><span>Pagos identificados</span><strong>{number(audit.paidOrders)}</strong>
           <small>Independentemente do período</small></div>
-        <div><span>Pagos sem data válida</span><strong>{number(missing)}</strong>
+        <div><span>Pagos sem data na listagem</span><strong>{number(missing)}</strong>
           <small>{number(audit.paidWithoutDate)} ausentes · {number(audit.paidWithInvalidDate)} inválidas</small></div>
-        <div><span>Proporção sem data</span><strong>{pct === null ? "—" : percentage(pct)}</strong>
+        <div><span>Ausência na listagem</span><strong>{pct === null ? "—" : percentage(pct)}</strong>
           <small>Dos pedidos pagos; só com paginação completa</small></div>
       </div>
-      {missing > 0 && <p className="auditWarning">
-        Não é possível determinar o dia do pagamento desses pedidos. A data de criação
-        é apenas um indício de origem e <strong>não substitui paid_at</strong>.
-      </p>}
+      {missing > 0 && <div className="auditClarification">
+        <strong>Listagem bruta não é consolidação de vendas.</strong>
+        <p>O campo paid_at aparece ausente ou inválido na resposta da listagem, mas o
+          detalhe individual pode conter a data correta. A auditoria acima não
+          consulta os detalhes nem exclui cancelamentos.</p>
+        {commerce?.ordersComplete && <p>
+          <strong>Resumo comercial concluído:</strong> {number(commerce.paidDatesRecovered)}
+          {" "}datas recuperadas para pedidos pagos elegíveis; {number(commerce.cancelledOrdersIgnored)}
+          {" "}cancelados excluídos; {number(commerce.paidOrdersWithoutDate)}
+          {" "}vendas elegíveis ainda sem data. Esses indicadores consideram o conjunto
+          consultado pelo resumo, não apenas o período selecionado.</p>}
+        {!commerce?.ordersComplete && <p>Não há consolidação comercial completa disponível
+          para conferir a recuperação de datas.</p>}
+      </div>}
       <div className="auditGroups">
         <AuditBuckets heading="Mês de criação (UTC) dos pagos sem data" rows={audit.undatedByCreationMonth}/>
         <AuditBuckets heading="Tipo de gateway" rows={audit.undatedByGateway}/>
@@ -439,7 +531,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
   const period = resolvePeriod(since, until);
 
   const query = new URLSearchParams({ since: period.since, until: period.until });
-  const [account, listing, summary, shop, commerce, audit] = await Promise.all([
+  const [account, listing, summary, shop, commerce, audit, conversionAudit] = await Promise.all([
     readApi<MetaAccount>("/api/v1/meta/account"),
     readApi<CampaignPage>("/api/v1/meta/campaigns?limit=100"),
     period.error ? Promise.resolve({ error: period.error } as Load<InsightSummary>) :
@@ -448,6 +540,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
     period.error ? Promise.resolve({ error: period.error } as Load<CommerceSummary>) :
       readApi<CommerceSummary>("/api/v1/commerce/summary?" + query.toString(), 120_000),
     readApi<PaymentAudit>("/api/v1/nuvemshop/payments/audit"),
+    period.error ? Promise.resolve({ error: period.error } as Load<MetaPurchaseAudit>) :
+      readApi<MetaPurchaseAudit>("/api/v1/meta/conversions/audit?" + query.toString()),
   ]);
   const data = summary.data;
   const currency = account.data?.currency ?? "BRL";
@@ -525,9 +619,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
 
         <MediaAnalysisPanel meta={data} store={commerce.data} currency={account.data?.currency}/>
 
+        <MetaPurchaseDiagnosticPanel audit={conversionAudit.data} meta={data}
+          currency={account.data?.currency} error={conversionAudit.error}/>
+
         <CommercePanel summary={commerce.data} error={commerce.error} currency={currency}/>
         {shop.data?.status === "CONNECTED" &&
-          <PaymentAuditPanel audit={audit.data} error={audit.error}/>}
+          <PaymentAuditPanel audit={audit.data} commerce={commerce.data} error={audit.error}/>}
 
         <section className="shopPanel" id="integracoes" aria-labelledby="shop-heading">
           <div className="shopHeader">

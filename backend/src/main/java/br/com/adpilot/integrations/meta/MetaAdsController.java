@@ -2,6 +2,8 @@ package br.com.adpilot.integrations.meta;
 
 import java.time.LocalDate;
 import java.util.Map;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,12 +16,15 @@ public class MetaAdsController {
     private final MetaSettings settings;
     private final MetaAdsClient client;
     private final MetaInsightsSummaryService summaryService;
+    private final MetaPurchaseAuditService purchaseAudit;
 
     public MetaAdsController(MetaSettings settings, MetaAdsClient client,
-                             MetaInsightsSummaryService summaryService) {
+                             MetaInsightsSummaryService summaryService,
+                             MetaPurchaseAuditService purchaseAudit) {
         this.settings = settings;
         this.client = client;
         this.summaryService = summaryService;
+        this.purchaseAudit = purchaseAudit;
     }
 
     @GetMapping("/status")
@@ -46,6 +51,16 @@ public class MetaAdsController {
             @RequestParam(defaultValue = "25") int limit,
             @RequestParam(required = false) String after) {
         return client.insights(since, until, limit, after);
+    }
+
+    @GetMapping("/conversions/audit")
+    public ResponseEntity<MetaPurchaseAuditService.Audit> purchaseAudit(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate since,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate until,
+            @RequestParam(defaultValue = "100") int pageSize,
+            @RequestParam(defaultValue = "20") int maxPages) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(purchaseAudit.audit(since, until, pageSize, maxPages));
     }
 
     @GetMapping("/insights/summary")
