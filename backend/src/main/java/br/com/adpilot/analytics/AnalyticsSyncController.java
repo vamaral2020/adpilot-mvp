@@ -13,13 +13,23 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/analytics")
 public class AnalyticsSyncController {
     private final AnalyticsSyncService sync;
+    private final AnalyticsSyncStore store;
 
-    public AnalyticsSyncController(AnalyticsSyncService sync) { this.sync = sync; }
+    public AnalyticsSyncController(AnalyticsSyncService sync, AnalyticsSyncStore store) {
+        this.sync=sync;
+        this.store=store;
+    }
 
     @GetMapping("/status")
     public ResponseEntity<Map<String, Boolean>> status() {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(Map.of("syncEnabled",sync.enabled()));
+    }
+
+    @GetMapping("/runs")
+    public ResponseEntity<java.util.List<AnalyticsSyncStore.RunInfo>> runs() {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(store.recentRuns());
     }
 
     @PostMapping("/sync")

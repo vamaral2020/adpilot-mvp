@@ -26,6 +26,26 @@ public class AnalyticsSyncStore {
         return dates.isEmpty() ? null : dates.getFirst();
     }
 
+    public record RunInfo(long id, String provider, String resource, String status,
+            int fetched, int stored, String errorCode, Instant startedAt,
+            Instant finishedAt) {}
+
+    public List<RunInfo> recentRuns() {
+        return jdbc.query("""
+                SELECT id,provider,resource,status,records_fetched,records_stored,
+                       error_code,started_at,finished_at
+                FROM analytics_sync_run
+                WHERE workspace_id=?
+                ORDER BY started_at DESC,id DESC
+                LIMIT 15
+                """, (rs, n) -> new RunInfo(rs.getLong("id"),rs.getString("provider"),
+                rs.getString("resource"),rs.getString("status"),
+                rs.getInt("records_fetched"),rs.getInt("records_stored"),
+                rs.getString("error_code"),rs.getTimestamp("started_at").toInstant(),
+                rs.getTimestamp("finished_at")==null ? null :
+                        rs.getTimestamp("finished_at").toInstant()),WORKSPACE);
+    }
+
     public long begin(String provider, String resource) {
         return jdbc.queryForObject(
                 "INSERT INTO analytics_sync_run (workspace_id,provider,resource,status) VALUES (?,?,?,'RUNNING') RETURNING id",

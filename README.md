@@ -591,6 +591,7 @@ também pode ser iniciada manualmente com Basic Auth:
 ```bash
 curl -sS -u admin -X POST http://localhost:18080/api/v1/analytics/sync
 curl -sS -u admin http://localhost:18080/api/v1/analytics/status
+curl -sS -u admin http://localhost:18080/api/v1/analytics/runs
 ```
 
 Não passe a senha na URL ou no histórico do terminal.
