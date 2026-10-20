@@ -23,6 +23,12 @@ public class NuvemshopClient {
     private static final String PRODUCT_FIELDS = "id,name,handle,variants";
     private static final String ORDER_FIELDS =
             "id,number,status,payment_status,shipping_status,total,currency,created_at,paid_at,products";
+    // Audit projection excludes names, amounts, addresses, transaction details and PII.
+    private static final String PAYMENT_AUDIT_FIELDS =
+            "id,payment_status,paid_at,created_at,updated_at,status,shipping_status,gateway,storefront,app_id";
+    private static final List<String> PAYMENT_AUDIT_PROJECTION =
+            List.of("id", "payment_status", "paid_at", "created_at", "updated_at",
+                    "status", "shipping_status", "gateway", "storefront", "app_id");
     private static final List<String> PRODUCT_PROJECTION = List.of("id", "name", "handle", "variants");
     private static final List<String> VARIANT_PROJECTION =
             List.of("id", "sku", "price", "promotional_price", "stock", "stock_management");
@@ -56,6 +62,15 @@ public class NuvemshopClient {
     public NuvemshopPage orders(int page, int perPage) {
         return read("orders", ORDER_FIELDS, page, perPage, ORDER_PROJECTION,
                 "products", ORDER_ITEM_PROJECTION);
+    }
+
+    /**
+     * Minimal, read-only projection for aggregate payment audits; never includes
+     * customer records, order products, monetary totals or transaction details.
+     */
+    public NuvemshopPage paymentAuditOrders(int page, int perPage) {
+        return read("orders", PAYMENT_AUDIT_FIELDS, page, perPage,
+                PAYMENT_AUDIT_PROJECTION, "", List.of());
     }
 
     private NuvemshopPage read(String resource, String fields, int page, int perPage,
