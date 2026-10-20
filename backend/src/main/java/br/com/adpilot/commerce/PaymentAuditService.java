@@ -4,6 +4,7 @@ import br.com.adpilot.integrations.nuvemshop.NuvemshopClient;
 import br.com.adpilot.integrations.nuvemshop.NuvemshopException;
 import br.com.adpilot.integrations.nuvemshop.NuvemshopPage;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -87,7 +88,7 @@ public class PaymentAuditService {
                         invalidDate++;
                     } else {
                         withDate++;
-                        increase(paymentMonths, YearMonth.from(parsed).toString());
+                        increase(paymentMonths, YearMonth.from(parsed.atZoneSameInstant(ZoneOffset.UTC)).toString());
                         continue;
                     }
                 }
@@ -179,7 +180,7 @@ public class PaymentAuditService {
     private static String monthOrUnknown(Object input) {
         if (!(input instanceof String s)) return "unknown";
         OffsetDateTime timestamp = parseDate(s);
-        return timestamp == null ? "unknown" : YearMonth.from(timestamp).toString();
+        return timestamp == null ? "unknown" : YearMonth.from(timestamp.atZoneSameInstant(ZoneOffset.UTC)).toString();
     }
 
     private static OffsetDateTime parseDate(String input) {
