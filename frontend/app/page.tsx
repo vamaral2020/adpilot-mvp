@@ -205,7 +205,7 @@ function CommercePanel({ summary, error, currency }: {
       <div>
         <div className="smallEyebrow">NUVEMSHOP + META ADS</div>
         <h2 id="commerce-heading">Desempenho comercial</h2>
-        <p>Pedidos pagos na loja e gasto em mídia no intervalo selecionado. Consulta somente leitura.</p>
+        <p>Vendas pagas e não canceladas, por data de pagamento, comparadas com o gasto em Meta Ads. Somente leitura.</p>
       </div>
       <span className="panelTag">{summary?.complete ? "Dados completos" : "Consolidação"}</span>
     </div>
@@ -231,7 +231,7 @@ function CommercePanel({ summary, error, currency }: {
           hint="Totais de pedidos pagos, por paid_at" icon={<span>◎</span>}/>
         <Card label="Pedidos pagos"
           value={completeOrders ? number(summary.paidOrders) : "—"}
-          hint="Pedidos únicos com pagamento confirmado" icon={<Icon name="layers"/>}/>
+          hint="Pedidos pagos, não cancelados, com data no intervalo" icon={<Icon name="layers"/>}/>
         <Card label="Ticket médio pago"
           value={completeOrders ? money(summary.averageTicket, shopCurrency) : "—"}
           hint="Receita paga / quantidade de pedidos pagos" icon={<span>↗</span>}/>
@@ -273,6 +273,15 @@ function CommercePanel({ summary, error, currency }: {
             Receita datada identificada: {money(summary.datedPaidRevenue, summary.storeCurrency ?? currency)}.
             Estes valores são parciais, não substituem o faturamento total da loja.
           </p>}
+          <p className="commerceNote">
+            Pedidos cancelados excluídos: {number(summary.cancelledOrdersIgnored)}.
+            Datas de pagamento recuperadas pela consulta individual: {number(summary.paidDatesRecovered)}
+            ({number(summary.individualLookups)} consultas adicionais).
+          </p>
+          {summary.inconsistentDetails > 0 && <p className="commerceNote">
+            Foram detectadas {number(summary.inconsistentDetails)} divergências entre listagem e detalhe.
+            Os totais comerciais não serão considerados conclusivos até nova conferência.
+          </p>
           {missingCurrency && <p className="commerceNote">Moeda da loja não identificada no período: MER indisponível.</p>}
           <p className="commerceFoot">{summary.ordersFetched} registros de pedidos consultados em {summary.pagesFetched} páginas.</p>
         </div>

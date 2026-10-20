@@ -16,6 +16,8 @@ public record CommerceSummary(
         boolean ordersComplete, boolean metaComplete, boolean complete,
         int pagesFetched, int ordersFetched,
         boolean ordersPagesComplete, int paidOrdersWithoutDate,
+        int cancelledOrdersIgnored, int paidDatesRecovered,
+        int individualLookups, int inconsistentDetails,
         Long datedPaidOrders, BigDecimal datedPaidRevenue,
         Long paidOrders, BigDecimal paidRevenue, BigDecimal averageTicket,
         String storeCurrency, String metaCurrency,

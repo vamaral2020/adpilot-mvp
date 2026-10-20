@@ -73,6 +73,10 @@ export type CommerceSummary = {
   ordersFetched: number;
   ordersPagesComplete: boolean;
   paidOrdersWithoutDate: number;
+  cancelledOrdersIgnored: number;
+  paidDatesRecovered: number;
+  individualLookups: number;
+  inconsistentDetails: number;
   datedPaidOrders: number | null;
   datedPaidRevenue: number | null;
   paidOrders: number | null;
