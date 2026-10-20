@@ -61,7 +61,7 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/v1/meta/status)" = "401"
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:18080/api/v1/meta/status | grep -q 'NOT_CONFIGURED'
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:13000/)" = "401"
-          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:13000/ | grep -q 'AdPilot'
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:13000/ | grep -q 'Painel de desempenho'
       - name: Collect Docker diagnostics on failure
         if: failure()
         run: docker compose ps && docker compose logs --tail=120

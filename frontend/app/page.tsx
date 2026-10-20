@@ -35,9 +35,6 @@ async function readApi<T>(path: string): Promise<Load<T>> {
   }
 }
 
-const current = new Date();
-const sevenDays = presetPeriod(7, current);
-const thirtyDays = presetPeriod(30, current);
 const presetUrl = (period: Period) => "/?since=" + period.since + "&until=" + period.until;
 
 function Icon({ name }: { name: "grid" | "activity" | "layers" | "settings" | "arrow" | "chart" }) {
@@ -87,6 +84,9 @@ function Card({ label, value, hint, accent = false, icon }: {
 }
 
 function PeriodFilter({ period }: { period: Period }) {
+  // Recompute on each server render so presets do not become stale overnight.
+  const sevenDays = presetPeriod(7);
+  const thirtyDays = presetPeriod(30);
   const sevenSelected = period.since === sevenDays.since && period.until === sevenDays.until;
   const thirtySelected = period.since === thirtyDays.since && period.until === thirtyDays.until;
   return <div className="filterPanel">
