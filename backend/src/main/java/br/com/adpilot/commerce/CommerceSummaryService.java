@@ -57,7 +57,8 @@ public class CommerceSummaryService {
         BigDecimal paidRevenue = BigDecimal.ZERO;
         long paidOrders = 0;
         String storeCurrency = null;
-        boolean ordersComplete = false;
+        boolean ordersPagesComplete = false;
+        int paidOrdersWithoutDate = 0;
         int pages = 0;
         int fetched = 0;
         Long expectedCount = null;
@@ -77,11 +78,16 @@ public class CommerceSummaryService {
                 if (!orderIds.add(id)) continue; // Prevent double counting across moving pages.
                 if (!"paid".equals(order.get("payment_status"))) continue;
 
+                // A paid legacy/imported order can be missing paid_at. Never infer a
+                // payment date from created_at (which represents another event).
+                // Record the anomaly and continue collecting other eligible orders.
                 Object rawPaidAt = order.get("paid_at");
-                if (!(rawPaidAt instanceof String value) || value.isBlank()) {
-                    throw invalidOrders("Pedido pago sem data de pagamento.");
+                LocalDate paidDay = rawPaidAt instanceof String value && !value.isBlank()
+                        ? utcDayOrNull(value) : null;
+                if (paidDay == null) {
+                    paidOrdersWithoutDate++;
+                    continue;
                 }
-                LocalDate paidDay = utcDay(value);
                 if (paidDay.isBefore(since) || paidDay.isAfter(until)) continue;
 
                 String currency = order.get("currency") instanceof String c ? c : "";
@@ -101,7 +107,7 @@ public class CommerceSummaryService {
             }
             if (!page.hasNext()) {
                 // Missing/duplicate records must not masquerade as complete.
-                ordersComplete = expectedCount == null || orderIds.size() >= expectedCount;
+                ordersPagesComplete = expectedCount == null || orderIds.size() >= expectedCount;
                 break;
             }
         }
@@ -109,7 +115,9 @@ public class CommerceSummaryService {
         var warnings = new ArrayList<String>();
         // Nuvemshop paid_at instants are normalized to UTC; Meta Insights use ad-account days.
         warnings.add("REPORTING_TIMEZONE_MAY_DIFFER");
-        if (!ordersComplete) warnings.add("ORDERS_INCOMPLETE");
+        if (!ordersPagesComplete) warnings.add("ORDERS_INCOMPLETE");
+        if (paidOrdersWithoutDate > 0) warnings.add("PAID_AT_MISSING_OR_INVALID");
+        boolean ordersComplete = ordersPagesComplete && paidOrdersWithoutDate == 0;
 
         // Keep the existing Meta aggregation unchanged, including its own pagination limits.
         MetaInsightsSummary meta = metaService.summary(since, until, 100, 20);
@@ -151,7 +159,11 @@ public class CommerceSummaryService {
         }
 
         return new CommerceSummary(since, until, ordersComplete, metaComplete,
-                ordersComplete && metaComplete, pages, fetched, count, total,
+                ordersComplete && metaComplete, pages, fetched,
+                ordersPagesComplete, paidOrdersWithoutDate,
+                ordersPagesComplete ? paidOrders : null,
+                ordersPagesComplete ? paidRevenue.setScale(2, RoundingMode.HALF_UP) : null,
+                count, total,
                 ticket, storeCurrency, metaCurrency,
                 spend, metaRevenue, attributedRoas, mer, daily, List.copyOf(warnings));
     }
@@ -174,7 +186,11 @@ public class CommerceSummaryService {
         }
     }
 
-    private static LocalDate utcDay(String raw) {
+    /**
+     * Invalid or missing paid_at is treated as an unclassifiable paid order,
+     * not an exception and never as a created_at-based estimate.
+     */
+    private static LocalDate utcDayOrNull(String raw) {
         try {
             return OffsetDateTime.parse(raw, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
                     .atZoneSameInstant(ZoneOffset.UTC).toLocalDate();
@@ -183,7 +199,7 @@ public class CommerceSummaryService {
                 return OffsetDateTime.parse(raw, OFFSET_BASIC)
                         .atZoneSameInstant(ZoneOffset.UTC).toLocalDate();
             } catch (DateTimeParseException e) {
-                throw invalidOrders("Data de pagamento invalida.");
+                return null;
             }
         }
     }

@@ -214,7 +214,8 @@ function CommercePanel({ summary, error, currency }: {
     {summary && <>
       {!summary.complete && <div className="alertBanner caution" role="status">
         <strong>Consolidação parcial</strong>
-        <span>{!summary.ordersComplete ? "A paginação dos pedidos não terminou; faturamento e ticket médio ficam indisponíveis. " : ""}
+        <span>{!summary.ordersPagesComplete ? "A paginação dos pedidos não terminou. " : ""}
+          {summary.paidOrdersWithoutDate > 0 ? summary.paidOrdersWithoutDate + " pedido(s) pago(s) sem data de pagamento válida; não é possível determinar se pertencem ao período. Receita total, ticket médio e MER ficam indisponíveis. " : ""}
           {!summary.metaComplete ? "Os Insights da Meta também estão incompletos; gasto e MER não são exibidos como totais." : ""}
         </span>
       </div>}
@@ -265,6 +266,11 @@ function CommercePanel({ summary, error, currency }: {
             Os pagamentos são agrupados pelo dia UTC e os Insights da Meta usam o fuso da conta de anúncios; pequenas diferenças de corte podem ocorrer.
             Não são descontados CMV, taxas, frete ou devoluções.
           </p>
+          {summary.paidOrdersWithoutDate > 0 && summary.ordersPagesComplete && <p className="commerceNote" role="status">
+            Pedidos pagos com data identificada no intervalo: {number(summary.datedPaidOrders)}.
+            Receita datada identificada: {money(summary.datedPaidRevenue, summary.storeCurrency ?? currency)}.
+            Estes valores são parciais, não substituem o faturamento total da loja.
+          </p>}
           {missingCurrency && <p className="commerceNote">Moeda da loja não identificada no período: MER indisponível.</p>}
           <p className="commerceFoot">{summary.ordersFetched} registros de pedidos consultados em {summary.pagesFetched} páginas.</p>
         </div>

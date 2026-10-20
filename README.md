@@ -237,3 +237,27 @@ será necessário compartilhar ou manter cache seguro de dados com limites de
 frescura definidos. O fuso da loja, devoluções, cancelamentos posteriores,
 taxas e CMV ainda exigirão um modelo financeiro mais refinado.
 
+
+## Tratamento de pedidos pagos sem paid_at — PR 009
+
+Alguns pedidos retornados pela API podem estar com `payment_status=paid`,
+mas `paid_at` nulo, vazio ou malformado. Não é correto assumir `created_at`
+como data de pagamento, pois criação e pagamento são eventos distintos.
+O endpoint `/api/v1/commerce/summary` agora termina a paginação normalmente
+e expõe:
+- `ordersPagesComplete`: se a paginação terminou integralmente;
+- `paidOrdersWithoutDate`: quantidade de pedidos pagos sem data confiável
+  (sem IDs, dados pessoais nem valores desses pedidos);
+- `datedPaidOrders` e `datedPaidRevenue`: somente pedidos pagos com data
+  válida dentro da janela, disponibilizados apenas após paginação concluída.
+  São **mínimos identificáveis**, não valores finais quando existem pedidos
+  sem data conhecida.
+
+Se houver pedidos pagos com `paid_at` desconhecido, retorna
+`ordersComplete=false` e `PAID_AT_MISSING_OR_INVALID` em `warnings`, com
+`paidOrders`, `paidRevenue`, `averageTicket`, `mer` e `daily` nulos/vazios.
+A API devolve HTTP 200 com indicação de dados incompletos, sem fabricar
+datas nem transformar receita potencial em resultado definitivo. A Meta
+continua apresentando seu próprio gasto e ROAS atribuído separadamente.
+A investigação da origem dos `paid_at` ausentes e eventual reconciliação
+de transações ficam para uma etapa específica.
