@@ -27,7 +27,7 @@ public class NuvemshopRepository {
     public void createState(byte[] digest) {
         jdbc.update("DELETE FROM nuvemshop_oauth_state WHERE expires_at < NOW()");
         jdbc.update("INSERT INTO nuvemshop_oauth_state (state_hash, workspace_id, expires_at) " +
-                "VALUES (?, ?, NOW() + INTERVAL '5 minutes')", digest, WORKSPACE);
+                "VALUES (?, ?, NOW() + INTERVAL '15 minutes')", digest, WORKSPACE);
     }
 
     // Independent transaction: the state is consumed even if token exchange fails.

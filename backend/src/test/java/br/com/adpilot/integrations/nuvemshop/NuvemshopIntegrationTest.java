@@ -61,7 +61,7 @@ class NuvemshopIntegrationTest {
             var crypto = new NuvemshopCrypto(props);
             var oauth = new NuvemshopAuthService(props, repo, crypto, RestClient.builder());
             var begin = oauth.begin();
-            assertEquals(300, begin.expiresInSeconds());
+            assertEquals(900, begin.expiresInSeconds());
             assertTrue(begin.authorizationUrl().contains("/apps/1234/authorize?state="));
             String state = begin.authorizationUrl().split("state=")[1];
             assertEquals(43, state.length());

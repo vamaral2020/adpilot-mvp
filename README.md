@@ -97,7 +97,7 @@ A PR 006 implementa **OAuth Authorization Code** com permissões
 Token associado à loja é salvo **criptografado com AES-256-GCM** no PostgreSQL;
 o código de autorização não é armazenado. O parâmetro `state` tem 256 bits
 aleatórios, é persistido somente como hash SHA-256 e deve ser consumido uma
-única vez em até 5 minutos. A conexão atual é limitada ao workspace pessoal
+única vez em até 15 minutos para permitir login/consentimento (o codigo OAuth emitido pela Nuvemshop expira separadamente apos 5 minutos). A conexão atual é limitada ao workspace pessoal
 (uma loja); isolamento multi-tenant será realizado antes de uma implantação SaaS.
 
 ### Configuração

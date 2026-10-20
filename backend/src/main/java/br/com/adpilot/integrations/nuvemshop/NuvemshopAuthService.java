@@ -60,7 +60,11 @@ public class NuvemshopAuthService {
         LOG.info("NUVEMSHOP_OAUTH_START state_ref={}", stateRef(digest));
         String url = settings.oauthBase() + "/apps/" + settings.clientId() + "/authorize?state="
                 + URLEncoder.encode(state, StandardCharsets.UTF_8);
-        return new Authorization(url, 300);
+        // This TTL starts *before* shop login and consent. Nuvemshop's 5-minute
+        // authorization-code expiry begins only after code issuance, not now.
+        // Allow 15 minutes for interactive installation without weakening the
+        // one-time, unpredictable state requirement.
+        return new Authorization(url, 900);
     }
 
     public void complete(String code, String state) {
