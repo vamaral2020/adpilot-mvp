@@ -264,7 +264,7 @@ function CommercePanel({ summary, error, currency }: {
             {summary.metaComplete ? multiplier(summary.metaRoas) : "—"}</strong></div>
           <div className="commerceMetric"><span>MER (loja inteira)</span><strong>{multiplier(trustedMer)}</strong></div>
           <p className="commerceNote">
-            ROAS representa eventos atribuídos pela Meta; MER compara todo o faturamento pago da loja com o gasto em anúncios, sem atribuir pedidos a campanhas.
+            ROAS representa eventos atribuídos pela Meta; MER compara receita de pedidos pagos não cancelados com o gasto em anúncios, sem atribuir pedidos a campanhas.
             Os pagamentos são agrupados pelo dia UTC e os Insights da Meta usam o fuso da conta de anúncios; pequenas diferenças de corte podem ocorrer.
             Não são descontados CMV, taxas, frete ou devoluções.
           </p>
@@ -281,7 +281,7 @@ function CommercePanel({ summary, error, currency }: {
           {summary.inconsistentDetails > 0 && <p className="commerceNote">
             Foram detectadas {number(summary.inconsistentDetails)} divergências entre listagem e detalhe.
             Os totais comerciais não serão considerados conclusivos até nova conferência.
-          </p>
+          </p>}
           {missingCurrency && <p className="commerceNote">Moeda da loja não identificada no período: MER indisponível.</p>}
           <p className="commerceFoot">{summary.ordersFetched} registros de pedidos consultados em {summary.pagesFetched} páginas.</p>
         </div>
