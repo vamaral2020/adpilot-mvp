@@ -16,6 +16,8 @@ public class NuvemshopExceptionHandler {
         response.put("code", e.code());
         response.put("message", e.getMessage());
         if (e.upstreamStatus() != null) response.put("upstream_http_status", e.upstreamStatus());
+        if (e.clientException() != null) response.put("client_exception", e.clientException());
+        if (e.rootException() != null) response.put("root_exception", e.rootException());
         return ResponseEntity.status(e.status())
                 .cacheControl(CacheControl.noStore())
                 .body(response);

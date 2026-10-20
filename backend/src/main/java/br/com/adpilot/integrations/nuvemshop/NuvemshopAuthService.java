@@ -80,9 +80,24 @@ public class NuvemshopAuthService {
             throw new NuvemshopException(HttpStatus.BAD_GATEWAY, "NUVEMSHOP_OAUTH_REJECTED",
                     "A Nuvemshop rejeitou a troca do codigo de autorizacao.",
                     e.getStatusCode().value());
+        } catch (org.springframework.web.client.UnknownContentTypeException e) {
+            // Upstream may return HTML (e.g. proxy/login page) with a 2xx HTTP status.
+            // Never include the response body: it may contain credentials or the OAuth code.
+            var mime = e.getContentType();
+            String type = mime.getType() + "/" + mime.getSubtype();
+            throw new NuvemshopException(HttpStatus.BAD_GATEWAY, "NUVEMSHOP_OAUTH_CONTENT_TYPE",
+                    "Resposta OAuth em formato inesperado: " + type + ".",
+                    e.getStatusCode().value());
         } catch (RestClientException e) {
+            // Class names only. Exception messages or URLs could contain sensitive data.
+            Throwable root = e;
+            for (int depth = 0; depth < 10 && root.getCause() != null
+                    && root.getCause() != root; depth++) {
+                root = root.getCause();
+            }
             throw new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE, "NUVEMSHOP_OAUTH_UNAVAILABLE",
-                    "Nao foi possivel concluir a autorizacao com a Nuvemshop.");
+                    "Nao foi possivel concluir a autorizacao com a Nuvemshop.",
+                    e.getClass().getSimpleName(), root.getClass().getSimpleName());
         }
         if (response == null) throw invalidTokenResponse();
         Object userId = response.get("user_id") == null ? response.get("store_id") : response.get("user_id");
