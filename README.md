@@ -127,6 +127,11 @@ curl -u admin http://localhost:18080/api/v1/nuvemshop/status
 curl -u admin http://localhost:18080/api/v1/nuvemshop/oauth/start
 ```
 
+Alternativamente, após configurar o aplicativo, acesse
+`http://localhost:13000/#integracoes` e clique em **Conectar minha loja**.
+Esse botão usa uma rota protegida do Next.js (com verificação de Origin)
+e redireciona diretamente para a Nuvemshop. A tela mostra o estado da conexão.
+
 O segundo endpoint retorna `authorizationUrl` (contém o state anti-CSRF,
 não um token). **Não divulgue esse link**; abra-o no seu navegador no mesmo
 computador. Depois de autorizar a instalação, a Nuvemshop chama o callback
