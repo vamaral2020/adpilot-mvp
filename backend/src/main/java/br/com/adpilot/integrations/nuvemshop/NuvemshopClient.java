@@ -73,6 +73,47 @@ public class NuvemshopClient {
                 PAYMENT_AUDIT_PROJECTION, "", List.of());
     }
 
+
+    /**
+     * Temporary diagnostic: fetch the upstream order JSON without the fields
+     * filter or with a minimal field filter. The caller MUST whitelist the
+     * response before logging or returning it: full responses may contain PII.
+     */
+    Map<String, Object> diagnosticOrder(long id, boolean filtered) {
+        if (id < 1) {
+            throw new NuvemshopException(HttpStatus.BAD_REQUEST, "INVALID_ORDER_ID",
+                    "Identificador invalido.");
+        }
+        var installation = repository.installation().orElseThrow(() ->
+                new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE, "NUVEMSHOP_NOT_CONNECTED",
+                        "Conecte a loja Nuvemshop antes da consulta."));
+        String path = "/" + settings.apiVersion() + "/" + installation.storeId() + "/orders/" + id;
+        String fields = "id,number,status,payment_status,created_at,paid_at,updated_at";
+        URI uri = URI.create(settings.apiBase() + path +
+                (filtered ? "?fields=" + URLEncoder.encode(fields, StandardCharsets.UTF_8) : ""));
+        try {
+            var data = client.get().uri(uri)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + crypto.decrypt(installation.tokenEncrypted()))
+                    .header(HttpHeaders.USER_AGENT, settings.userAgent())
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+            if (data == null) {
+                throw new NuvemshopException(HttpStatus.BAD_GATEWAY, "NUVEMSHOP_EMPTY_RESPONSE",
+                        "Pedido retornado sem conteudo pela Nuvemshop.");
+            }
+            return data;
+        } catch (RestClientResponseException e) {
+            int upstream = e.getStatusCode().value();
+            throw new NuvemshopException(upstream == 429 ? HttpStatus.SERVICE_UNAVAILABLE
+                    : HttpStatus.BAD_GATEWAY, upstream == 429 ? "NUVEMSHOP_RATE_LIMIT"
+                    : "NUVEMSHOP_ORDER_DIAGNOSTIC_ERROR",
+                    "Falha ao consultar pedido individual na Nuvemshop.", upstream);
+        } catch (RestClientException e) {
+            throw new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE, "NUVEMSHOP_UNAVAILABLE",
+                    "A API da Nuvemshop esta indisponivel.");
+        }
+    }
+
     private NuvemshopPage read(String resource, String fields, int page, int perPage,
                                List<String> allowed, String nested, List<String> allowedNested) {
         if (page < 1 || page > 100 || perPage < 1 || perPage > 100
