@@ -135,7 +135,7 @@ class NuvemshopIntegrationTest {
             when(repo.installation()).thenReturn(Optional.of(
                     new NuvemshopRepository.Installation("789", "read_products,read_orders",
                             crypto.encrypt("test-bearer"), java.time.Instant.now())));
-            var client = new NuvemshopClient(props, repo, crypto, RestClient.builder(), JsonMapper.builder().build());
+            var client = new NuvemshopClient(props, repo, crypto, RestClient.builder());
 
             var products = client.products(1, 30);
             assertEquals(1, products.data().size());
@@ -163,7 +163,7 @@ class NuvemshopIntegrationTest {
         when(repo.installation()).thenReturn(Optional.empty());
         var props = settings("https://api.nuvemshop.com.br", "https://www.nuvemshop.com.br");
         var client = new NuvemshopClient(props, repo, new NuvemshopCrypto(props),
-                RestClient.builder(), JsonMapper.builder().build());
+                RestClient.builder());
         assertEquals("NUVEMSHOP_INVALID_PAGINATION",
                 assertThrows(NuvemshopException.class, () -> client.products(0, 30)).code());
         assertEquals("NUVEMSHOP_INVALID_PAGINATION",
