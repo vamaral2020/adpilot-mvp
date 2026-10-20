@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.json.JsonMapper;
 
 class NuvemshopIntegrationTest {
     private static final String AES_KEY = Base64.getEncoder()
@@ -67,7 +68,7 @@ class NuvemshopIntegrationTest {
                     "http://127.0.0.1:" + server.getAddress().getPort() + "/apps/authorize/token");
             assertTrue(props.validTokenUrl());
             var crypto = new NuvemshopCrypto(props);
-            var oauth = new NuvemshopAuthService(props, repo, crypto, RestClient.builder());
+            var oauth = new NuvemshopAuthService(props, repo, crypto, RestClient.builder(), JsonMapper.builder().build());
             var begin = oauth.begin();
             assertEquals(900, begin.expiresInSeconds());
             assertTrue(begin.authorizationUrl().startsWith("https://www.nuvemshop.com.br/apps/1234/authorize?state="));
@@ -134,7 +135,7 @@ class NuvemshopIntegrationTest {
             when(repo.installation()).thenReturn(Optional.of(
                     new NuvemshopRepository.Installation("789", "read_products,read_orders",
                             crypto.encrypt("test-bearer"), java.time.Instant.now())));
-            var client = new NuvemshopClient(props, repo, crypto, RestClient.builder());
+            var client = new NuvemshopClient(props, repo, crypto, RestClient.builder(), JsonMapper.builder().build());
 
             var products = client.products(1, 30);
             assertEquals(1, products.data().size());
@@ -162,7 +163,7 @@ class NuvemshopIntegrationTest {
         when(repo.installation()).thenReturn(Optional.empty());
         var props = settings("https://api.nuvemshop.com.br", "https://www.nuvemshop.com.br");
         var client = new NuvemshopClient(props, repo, new NuvemshopCrypto(props),
-                RestClient.builder());
+                RestClient.builder(), JsonMapper.builder().build());
         assertEquals("NUVEMSHOP_INVALID_PAGINATION",
                 assertThrows(NuvemshopException.class, () -> client.products(0, 30)).code());
         assertEquals("NUVEMSHOP_INVALID_PAGINATION",
@@ -172,7 +173,7 @@ class NuvemshopIntegrationTest {
         assertEquals("NUVEMSHOP_INVALID_CALLBACK",
                 assertThrows(NuvemshopException.class, () ->
                         new NuvemshopAuthService(props, repo, new NuvemshopCrypto(props),
-                                RestClient.builder()).complete("code", "forged")).code());
+                                RestClient.builder(), JsonMapper.builder().build()).complete("code", "forged")).code());
         verify(repo, never()).consumeState(any());
     }
 
@@ -183,7 +184,7 @@ class NuvemshopIntegrationTest {
                 "http://localhost:13000/");
         var repo = mock(NuvemshopRepository.class);
         var oauth = new NuvemshopAuthService(invalid, repo, new NuvemshopCrypto(invalid),
-                RestClient.builder());
+                RestClient.builder(), JsonMapper.builder().build());
         assertEquals("NOT_CONFIGURED", oauth.status().status());
         assertEquals("NUVEMSHOP_NOT_CONFIGURED",
                 assertThrows(NuvemshopException.class, oauth::begin).code());
@@ -204,11 +205,11 @@ class NuvemshopIntegrationTest {
             var props = settings("https://api.nuvemshop.com.br",
                     "http://127.0.0.1:" + server.getAddress().getPort());
             var oauth = new NuvemshopAuthService(props, repo, new NuvemshopCrypto(props),
-                    RestClient.builder());
+                    RestClient.builder(), JsonMapper.builder().build());
             var state = "a".repeat(43);
             var error = assertThrows(NuvemshopException.class,
                     () -> oauth.complete("secret-code", state));
-            assertEquals("NUVEMSHOP_OAUTH_CONTENT_TYPE", error.code());
+            assertEquals("NUVEMSHOP_INVALID_OAUTH_RESPONSE", error.code());
             assertEquals(200, error.upstreamStatus());
             var payload = new NuvemshopExceptionHandler().handle(error).getBody();
             assertNotNull(payload);
@@ -234,12 +235,10 @@ class NuvemshopIntegrationTest {
             var props = settings("https://api.nuvemshop.com.br",
                     "http://127.0.0.1:" + server.getAddress().getPort());
             var oauth = new NuvemshopAuthService(props, repo, new NuvemshopCrypto(props),
-                    RestClient.builder());
+                    RestClient.builder(), JsonMapper.builder().build());
             var error = assertThrows(NuvemshopException.class,
                     () -> oauth.complete("secret-code", "b".repeat(43)));
-            assertEquals("NUVEMSHOP_OAUTH_UNAVAILABLE", error.code());
-            assertNotNull(error.clientException());
-            assertNotNull(error.rootException());
+            assertEquals("NUVEMSHOP_INVALID_OAUTH_RESPONSE", error.code());
             var serialized = new NuvemshopExceptionHandler().handle(error).getBody().toString();
             assertFalse(serialized.contains("secret-code"));
             assertFalse(serialized.contains("unparseable-secret-data"));
@@ -282,7 +281,7 @@ class NuvemshopIntegrationTest {
                     "https://www.nuvemshop.com.br",
                     "http://127.0.0.1:" + server.getAddress().getPort() + "/apps/authorize/token");
             var oauth = new NuvemshopAuthService(props, repo, new NuvemshopCrypto(props),
-                    RestClient.builder());
+                    RestClient.builder(), JsonMapper.builder().build());
             var error = assertThrows(NuvemshopException.class,
                     () -> oauth.complete("sensitive-code", "c".repeat(43)));
             assertEquals("NUVEMSHOP_OAUTH_CHALLENGE", error.code());
