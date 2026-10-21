@@ -55,6 +55,7 @@ class AnalyticsHistoryServiceTest {
         var until = LocalDate.of(2026, 10, 20);
         when(repository.metaDaily(since, until)).thenReturn(List.of());
         when(repository.paidDaily(since, until)).thenReturn(List.of());
+        when(repository.campaignPerformance(since, until)).thenReturn(List.of());
         when(repository.syncStates()).thenReturn(List.of());
 
         var report = service.history(since, until);
@@ -65,6 +66,7 @@ class AnalyticsHistoryServiceTest {
         assertEquals("HISTORICAL_COVERAGE_NOT_VERIFIED", report.warnings().getFirst());
         verify(repository).metaDaily(since, until);
         verify(repository).paidDaily(since, until);
+        verify(repository).campaignPerformance(since, until);
         verify(repository).syncStates();
     }
 }
