@@ -220,3 +220,28 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
 .historyCampaignTable td:first-child strong{font-weight:650;color:#e5f2ff}
 .historyCampaignId{display:block;color:#7891ae;font-size:10px;margin-top:5px}
 .historyCampaignTable td:last-child{font-weight:740;color:#a5eedc}
+
+
+/* PR 017 - explanatory, conservative recommendation preview. */
+.recommendationsSummary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:24px 0}
+.recommendationsSummary>div{display:flex;flex-direction:column;gap:10px;padding:22px;border:1px solid #34465d;border-radius:13px;background:linear-gradient(135deg,#15263b,#121c2b);min-width:0}
+.recommendationsSummary small{font-size:12px;color:#a5bad2}
+.recommendationsSummary strong{font-size:clamp(19px,2.2vw,28px);color:#e6f3ff;overflow-wrap:anywhere}
+.recommendationsHint{border:1px solid #3b566d;border-radius:11px;background:#13273a;color:#b7d5f0;padding:16px;line-height:1.65;margin-top:15px}
+.recommendationsList{display:grid;grid-template-columns:1fr;gap:16px;margin:22px 0}
+.recommendationCard{padding:23px 25px;border:1px solid #34485f;background:#121f30;border-radius:14px}
+.recommendationCardTop{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px}
+.recommendationCard h2{font-size:19px;margin:10px 0 7px}
+.recommendationCard>p{color:#b1c7da;font-size:13px;line-height:1.75;margin:15px 0 0}
+.recommendationCampaignId{display:block;color:#88a0b9;font-size:11px}
+.recommendationTag{border:1px solid #3e586e;background:#1b3547;color:#b6dce8;border-radius:30px;font-size:11px;padding:8px 12px}
+.recommendationTagMedium{background:#342c20;color:#ead2a5;border-color:#735839}
+.recommendationEvidence{margin:18px 0;border:1px solid #2d4357;border-radius:9px;padding:14px}
+.recommendationEvidence summary{font-weight:650;color:#bed2e7;cursor:pointer}
+.recommendationEvidenceGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:15px}
+.recommendationEvidenceGrid>div{padding:13px;background:#192a40;border-radius:8px;min-width:0;display:flex;flex-direction:column;gap:7px}
+.recommendationEvidenceGrid span{color:#93acc8;font-size:11px}
+.recommendationEvidenceGrid strong{color:#ebf5ff;font-size:15px;overflow-wrap:anywhere}
+.recommendationCard .recommendationFootnote{color:#819ab5;font-size:11px;border-top:1px solid #2d4355;padding-top:13px;margin-top:18px}
+@media(max-width:800px){.recommendationsSummary{grid-template-columns:1fr}.recommendationEvidenceGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:540px){.recommendationCard{padding:18px}.recommendationEvidenceGrid{grid-template-columns:1fr}.recommendationCard h2{font-size:17px}}
