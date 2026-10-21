@@ -70,6 +70,25 @@ jobs:
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
             'http://127.0.0.1:18080/api/v1/analytics/history?since=2026-10-01&until=2026-10-20' \
             | grep -q '"campaigns":\[\]'
+          # PR 017: preview is read-only and never pretends an empty period has zero purchases.
+          test "$(curl -s -o /dev/null -w '%{http_code}' \
+            'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20')" = "401"
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20' \
+            | grep -q '"NO_META_INSIGHTS"'
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            'SELECT count(*) FROM analytics_recommendation_evaluation')" = "0"
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            -H 'Content-Type: application/json' \
+            --data '{"since":"2026-10-14","until":"2026-10-20","targetRoas":3,"targetCpa":50}' \
+            'http://127.0.0.1:18080/api/v1/analytics/recommendations/evaluations' \
+            | grep -q '"evaluationId"'
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            'SELECT count(*) FROM analytics_recommendation_evaluation')" = "1"
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            'SELECT count(*) FROM analytics_recommendation')" = "1"
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='analytics_recommendation_evaluation'")" = "1"
           test "$(curl -s -o /dev/null -w '%{http_code}' -u admin:ci-local-admin-password-123 -X POST http://127.0.0.1:18080/api/v1/analytics/sync)" = "409"
           test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('analytics_sync_state','analytics_sync_run','analytics_order_snapshot','analytics_meta_insight_daily','analytics_audience_definition','analytics_recommendation','analytics_recommendation_evidence','analytics_meta_campaign_snapshot')")" = "8"
       - name: Collect Docker diagnostics on failure
