@@ -210,3 +210,13 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
 @media(max-width:1100px){.historyCampaignKpis{grid-template-columns:repeat(2,minmax(0,1fr))}.historyOutcomeCharts{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:800px){.historyStoreKpis,.historyOutcomeCharts{grid-template-columns:1fr}}
 @media(max-width:560px){.historyOutcomePanel,.historyStorePanel{padding:17px}.historyCampaignKpis,.historyStoreKpis{grid-template-columns:1fr}.historyMetric{min-height:140px}.historySectionHead h2{font-size:19px}}
+
+.historyCampaignList{margin-top:18px}
+.historyCampaignList .historySectionHead{margin-bottom:19px}
+.historyCampaignList .historySectionHead h2{margin:0 0 7px}
+.historyCampaignTable{min-width:770px}
+.historyCampaignTable td{vertical-align:middle}
+.historyCampaignTable td:first-child{min-width:220px;max-width:310px;overflow-wrap:anywhere}
+.historyCampaignTable td:first-child strong{font-weight:650;color:#e5f2ff}
+.historyCampaignId{display:block;color:#7891ae;font-size:10px;margin-top:5px}
+.historyCampaignTable td:last-child{font-weight:740;color:#a5eedc}
