@@ -40,7 +40,8 @@ public class AnalyticsHistoryService {
 
         // A successful sync does not demonstrate complete coverage of the requested days.
         return new History(since, until, repository.metaDaily(since, until),
-                repository.paidDaily(since, until), repository.syncStates(), false,
+                repository.paidDaily(since, until), repository.campaignPerformance(since, until),
+                repository.syncStates(), false,
                 List.of("HISTORICAL_COVERAGE_NOT_VERIFIED",
                         "META_ACCOUNT_TIMEZONE_VS_STORE_UTC",
                         "ORDER_SNAPSHOTS_NOT_EVENT_LEDGER"));

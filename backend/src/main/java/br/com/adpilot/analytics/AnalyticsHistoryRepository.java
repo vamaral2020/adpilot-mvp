@@ -1,5 +1,6 @@
 package br.com.adpilot.analytics;
 
+import br.com.adpilot.analytics.AnalyticsHistoryModels.CampaignResult;
 import br.com.adpilot.analytics.AnalyticsHistoryModels.MetaDay;
 import br.com.adpilot.analytics.AnalyticsHistoryModels.SourceState;
 import br.com.adpilot.analytics.AnalyticsHistoryModels.StoreDay;
@@ -31,6 +32,43 @@ public class AnalyticsHistoryRepository {
                 WHERE workspace_id=? AND insight_day BETWEEN ? AND ?
                 GROUP BY insight_day,currency ORDER BY insight_day,currency
                 """, (rs, n) -> new MetaDay(rs.getObject("insight_day", LocalDate.class),
+                rs.getString("currency"), rs.getBigDecimal("spend"),
+                rs.getLong("impressions"), rs.getLong("clicks"),
+                rs.getBigDecimal("purchases"), rs.getBigDecimal("revenue")),
+                AnalyticsSyncStore.WORKSPACE, since, until);
+    }
+
+    /**
+     * Performance per actual Meta campaign. The campaign name is resolved from
+     * the latest known catalog snapshot without duplicating daily metrics.
+     * This is Meta's attribution, not a join to paid Nuvemshop orders.
+     */
+    @Transactional(readOnly = true)
+    public List<CampaignResult> campaignPerformance(LocalDate since, LocalDate until) {
+        return jdbc.query("""
+                SELECT d.account_id, d.campaign_id,
+                       COALESCE(NULLIF(c.campaign_name, ''), d.campaign_id) AS campaign_name,
+                       d.currency,
+                       SUM(d.spend) AS spend,
+                       SUM(d.impressions) AS impressions,
+                       SUM(d.clicks) AS clicks,
+                       SUM(d.attributed_purchases) AS purchases,
+                       SUM(d.attributed_revenue) AS revenue
+                FROM analytics_meta_insight_daily d
+                LEFT JOIN LATERAL (
+                    SELECT s.campaign_name
+                    FROM analytics_meta_campaign_snapshot s
+                    WHERE s.workspace_id=d.workspace_id
+                      AND s.account_id=d.account_id
+                      AND s.campaign_id=d.campaign_id
+                    ORDER BY s.observed_at DESC
+                    LIMIT 1
+                ) c ON TRUE
+                WHERE d.workspace_id=? AND d.insight_day BETWEEN ? AND ?
+                GROUP BY d.account_id,d.campaign_id,c.campaign_name,d.currency
+                ORDER BY spend DESC,d.campaign_id
+                """, (rs, n) -> new CampaignResult(rs.getString("account_id"),
+                rs.getString("campaign_id"), rs.getString("campaign_name"),
                 rs.getString("currency"), rs.getBigDecimal("spend"),
                 rs.getLong("impressions"), rs.getLong("clicks"),
                 rs.getBigDecimal("purchases"), rs.getBigDecimal("revenue")),

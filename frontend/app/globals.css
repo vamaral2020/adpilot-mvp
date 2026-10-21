@@ -182,3 +182,41 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
 .historyBarColumn{flex:1;min-width:5px;height:100%;display:flex;align-items:end}
 .historyBar{display:block;width:100%;min-height:0;background:linear-gradient(0deg,#4c7af0,#53dac0);border-radius:3px 3px 0 0}
 @media(max-width:800px){.historyKpis,.historyGrid{grid-template-columns:1fr}.historyChart{height:160px}}
+
+
+/* PR 016.2: ad-attributed outcomes first; store-wide sales are context, not 'organic'. */
+.historyOutcomePanel,.historyStorePanel{border:1px solid #365477;border-radius:16px;padding:24px;background:linear-gradient(130deg,#15263c,#121b2a);margin-top:24px}
+.historyStorePanel{border-color:#2a4051;background:#111d2b;margin-top:18px}
+.historySectionHead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.historySectionHead h2{font-size:21px;letter-spacing:-.5px;margin:9px 0}
+.historySectionHead p{font-size:12px;line-height:1.7;color:#a3b5cc;margin:0;max-width:740px}
+.historySourceTag{border:1px solid #345574;border-radius:999px;background:#172c41;color:#a9c9ed;padding:8px 13px;font-size:11px;white-space:nowrap}
+.historyCampaignKpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:24px}
+.historyStoreKpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:22px}
+.historyMetric{margin:0;min-height:177px;background:#132238;border-color:#34506b;display:flex;flex-direction:column}
+.historyMetric>span{line-height:1.5;color:#b8ccdf}
+.historyMetric>strong{color:#edf5ff;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;font-size:clamp(22px,2.2vw,30px)}
+.historyMetric>small{line-height:1.55;margin-top:auto}
+.historyMetricEmphasis{background:linear-gradient(140deg,#153e3c,#142b38);border-color:#328b82}
+.historyMetricEmphasis>strong{color:#a5eedc}
+.historyPlainExplanation{background:#102e33;border:1px solid #245e62;border-radius:11px;color:#ceeae9;font-size:14px;line-height:1.75;padding:17px 19px;margin:18px 0 0}
+.historyPlainExplanation strong{color:#f5fffc}
+.historyAttributionNote,.historyReconciliationNote{margin:14px 0 0;color:#a5bbd0;font-size:12px;line-height:1.75}
+.historyAttributionNote strong,.historyReconciliationNote strong{color:#dae8fa}
+.historyOutcomeCharts{grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;margin-top:24px}
+.historyChartLabels{display:flex;gap:4px;margin:5px 0 0;color:#94a6bd}
+.historyChartLabels>span{min-width:5px;flex:1;text-align:center;font-size:9px}
+.historyChartEmpty{font-size:12px;color:#93a8c0;line-height:1.6;min-height:154px;display:flex;align-items:center}
+@media(max-width:1100px){.historyCampaignKpis{grid-template-columns:repeat(2,minmax(0,1fr))}.historyOutcomeCharts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:800px){.historyStoreKpis,.historyOutcomeCharts{grid-template-columns:1fr}}
+@media(max-width:560px){.historyOutcomePanel,.historyStorePanel{padding:17px}.historyCampaignKpis,.historyStoreKpis{grid-template-columns:1fr}.historyMetric{min-height:140px}.historySectionHead h2{font-size:19px}}
+
+.historyCampaignList{margin-top:18px}
+.historyCampaignList .historySectionHead{margin-bottom:19px}
+.historyCampaignList .historySectionHead h2{margin:0 0 7px}
+.historyCampaignTable{min-width:770px}
+.historyCampaignTable td{vertical-align:middle}
+.historyCampaignTable td:first-child{min-width:220px;max-width:310px;overflow-wrap:anywhere}
+.historyCampaignTable td:first-child strong{font-weight:650;color:#e5f2ff}
+.historyCampaignId{display:block;color:#7891ae;font-size:10px;margin-top:5px}
+.historyCampaignTable td:last-child{font-weight:740;color:#a5eedc}

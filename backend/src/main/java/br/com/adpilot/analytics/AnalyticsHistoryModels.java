@@ -14,9 +14,13 @@ public final class AnalyticsHistoryModels {
             BigDecimal attributedRevenue) {}
     public record StoreDay(LocalDate date, String currency, long paidOrders,
             BigDecimal paidRevenue) {}
+    /** Aggregated per Meta ad account and campaign, not linked to individual store orders. */
+    public record CampaignResult(String accountId, String campaignId, String name,
+            String currency, BigDecimal spend, long impressions, long clicks,
+            BigDecimal attributedPurchases, BigDecimal attributedRevenue) {}
     public record SourceState(String provider, String resource, String lastStatus,
             Instant lastSuccess, Instant cursorAt) {}
     public record History(LocalDate since, LocalDate until, List<MetaDay> meta,
-            List<StoreDay> store, List<SourceState> sources, boolean complete,
+            List<StoreDay> store, List<CampaignResult> campaigns, List<SourceState> sources, boolean complete,
             List<String> warnings) {}
 }
