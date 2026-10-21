@@ -8,6 +8,8 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -20,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @Service
 public class AnalyticsSyncService {
+    private static final Logger LOG = LoggerFactory.getLogger(AnalyticsSyncService.class);
     private final AnalyticsSyncStore store;
     private final AnalyticsCollector collector;
     private final MetaSettings metaSettings;
@@ -75,16 +78,22 @@ public class AnalyticsSyncService {
     private ProviderResult runOrders() {
         final String provider="NUVEMSHOP", resource="ORDERS";
         long runId = store.begin(provider,resource);
+        OrderSyncFailureCodes.Stage stage = OrderSyncFailureCodes.Stage.COLLECT;
         try {
             Instant now = Instant.now();
             Instant cursor = store.cursor(provider,resource);
             var result = collector.orders(cursor,now);
+            stage = OrderSyncFailureCodes.Stage.PERSIST;
             store.saveOrders(runId,result.rows(),result.upper(),result.fetched());
             return new ProviderResult(provider,resource,"SUCCEEDED",result.fetched(),
                     result.rows().size(),null);
         } catch (RuntimeException e) {
-            store.failed(runId,"ORDER_SYNC_FAILED");
-            return new ProviderResult(provider,resource,"FAILED",null,null,"ORDER_SYNC_FAILED");
+            String code = OrderSyncFailureCodes.classify(e, stage);
+            // Deliberately log only safe metadata, never e or e.getMessage().
+            LOG.warn("ANALYTICS_ORDER_SYNC_FAILURE runId={} stage={} code={}",
+                    runId, stage, code);
+            store.failed(runId,code);
+            return new ProviderResult(provider,resource,"FAILED",null,null,code);
         }
     }
 
