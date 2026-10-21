@@ -638,3 +638,37 @@ aprovação para iniciar uma campanha ou alterar orçamento.
 
 Documentação oficial dos filtros da Nuvemshop:
 https://nuvemshop.dev/docs-api/resources/2025-03/order
+
+
+## PR 016 — Histórico analítico local
+
+O endpoint autenticado `GET /api/v1/analytics/history?since=YYYY-MM-DD&until=YYYY-MM-DD`
+consulta exclusivamente o PostgreSQL do workspace local, sem chamar APIs da Meta
+ou Nuvemshop. O período é inclusivo, limitado a 90 dias e não aceita futuro.
+A nova tela `/historico` apresenta séries de gasto Meta e receita paga Nuvemshop,
+com filtros de 7/30 dias ou datas manuais.
+
+Apenas `eligible_paid_sale=true` entra nas receitas da loja: pagamento com
+`paid_at` válido, sem cancelamento, com total e moeda. Não se utiliza
+`created_at` como substituto para pagamento. Os eventos da Meta são agrupados
+na data reportada pela conta Meta; a data dos pagamentos é UTC.
+
+**Restrições conhecidas:** a tabela de pedidos contém o snapshot mais recente,
+não um histórico completo de alterações de status. A sincronização inicial da
+Nuvemshop considera atualizações em janela limitada e não prova cobertura de
+todos os pagamentos efetuados no período. Ausência de linha diária pode
+significar ausência de coleta, não zero atividade. Consequentemente
+`complete=false` e `HISTORICAL_COVERAGE_NOT_VERIFIED` são deliberados até
+existir controle de cobertura temporal demonstrável. A tela não apresenta
+comparações financeiras como resultados conclusivos sem essa comprovação.
+
+Verificação manual pós-deploy:
+
+```bash
+curl -u admin 'http://localhost:18080/api/v1/analytics/status'
+curl -u admin 'http://localhost:18080/api/v1/analytics/runs'
+curl -u admin 'http://localhost:18080/api/v1/analytics/history?since=2026-10-01&until=2026-10-20'
+```
+
+O endpoint permanece em HTTP Basic local e devolve `Cache-Control: no-store`.
+Não há novos escopos OAuth, alteração de campanhas ou migration.
