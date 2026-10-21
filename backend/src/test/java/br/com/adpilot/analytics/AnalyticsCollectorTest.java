@@ -151,4 +151,48 @@ class AnalyticsCollectorTest {
         assertEquals("INVALID_META_PAGINATION",
                 assertThrows(IllegalStateException.class,()->collector.insights(now)).getMessage());
     }
+    @Test void olderThanRequestedLowerBoundFailsWithoutFetchingOrderDetails() {
+        // Reproduces the observed provider anomaly: old updated_at returned
+        // despite updated_at_min being supplied.
+        var stale=order(10,"open","paid",null,"2026-09-16T19:12:44+00:00");
+        when(shop.ordersUpdatedBetween(any(),any(),eq(1),eq(100)))
+                .thenReturn(page(List.of(stale),false));
+
+        assertEquals("ORDER_BEFORE_LOWER_BOUND",
+                assertThrows(IllegalStateException.class,
+                        () -> collector.orders(null,now)).getMessage());
+        verify(shop,never()).paidOrderDetails(anyLong());
+    }
+
+    @Test void incrementalWindowRejectsOldRowsFromPreviousSuccessfulSync() {
+        var cursor=now.minusSeconds(3600);
+        var stale=order(10,"open","pending",null,"2026-10-17T12:00:00+00:00");
+        when(shop.ordersUpdatedBetween(any(),any(),eq(1),eq(100)))
+                .thenReturn(page(List.of(stale),false));
+
+        assertEquals("ORDER_BEFORE_LOWER_BOUND",
+                assertThrows(IllegalStateException.class,
+                        () -> collector.orders(cursor,now)).getMessage());
+        verify(shop).ordersUpdatedBetween(eq(cursor.minusSeconds(600)),
+                eq(now.minusSeconds(300)),eq(1),eq(100));
+    }
+
+    @Test void upperBoundStillRejectsClearlyFutureUpdates() {
+        var future=order(10,"open","pending",null,"2026-10-20T12:00:00+00:00");
+        when(shop.ordersUpdatedBetween(any(),any(),eq(1),eq(100)))
+                .thenReturn(page(List.of(future),false));
+        assertEquals("ORDER_AFTER_UPPER_BOUND",
+                assertThrows(IllegalStateException.class,
+                        () -> collector.orders(null,now)).getMessage());
+    }
+
+    @Test void oneMinuteBoundaryToleranceAvoidsTimestampPrecisionFalsePositives() {
+        var lower=now.minusSeconds(300+30L*86400);
+        var nearLower=order(10,"open","pending",null,
+                lower.minusSeconds(30).toString());
+        when(shop.ordersUpdatedBetween(any(),any(),eq(1),eq(100)))
+                .thenReturn(page(List.of(nearLower),false));
+        assertEquals(1,collector.orders(null,now).rows().size());
+    }
+
 }

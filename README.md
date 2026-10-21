@@ -672,3 +672,45 @@ curl -u admin 'http://localhost:18080/api/v1/analytics/history?since=2026-10-01&
 
 O endpoint permanece em HTTP Basic local e devolve `Cache-Control: no-store`.
 Não há novos escopos OAuth, alteração de campanhas ou migration.
+
+
+## Hotfix PR 016.1 — diagnóstico seguro da sincronização incremental Nuvemshop
+
+A sincronização de pedidos agora confere os dois limites de `updated_at`
+contra a janela enviada ao provedor, com 60 segundos de tolerância para
+precisão de timestamp e pequenos desvios de relógio. Um pedido anterior ao
+limite inferior causa `ORDER_BEFORE_LOWER_BOUND`; um pedido além do limite
+superior causa `ORDER_AFTER_UPPER_BOUND`. Nenhuma das duas condições autoriza
+a confirmação parcial de uma janela nem o avanço do checkpoint.
+
+Falhas são classificadas por etapa, sem expor mensagens livres de exceção,
+dados de clientes, resposta bruta, URL, token ou credenciais:
+
+- `ORDER_API_HTTP_XXX`: rejeição HTTP da Nuvemshop (somente código de status).
+- `ORDER_API_UNAVAILABLE`: falha de comunicação sem status HTTP disponível.
+- `ORDER_BEFORE_LOWER_BOUND`/`ORDER_AFTER_UPPER_BOUND`: filtro temporal incompatível.
+- `ORDER_PAGE_*`, `ORDER_DETAIL_*`, `ORDER_SOURCE_DATA_INVALID`:
+  falhas reconhecidas de paginação ou validação.
+- `ORDER_DB_WRITE_FAILED`/`ORDER_PERSIST_FAILED`: falha na persistência.
+- `ORDER_COLLECTION_FAILED`: erro inesperado não identificado por allowlist.
+
+O código seguro aparece no `POST /api/v1/analytics/sync`, em
+`GET /api/v1/analytics/runs` e em uma linha de log
+`ANALYTICS_ORDER_SYNC_FAILURE` contendo apenas `runId`, `stage` e `code`.
+A coleta de Meta Ads continua independente. Snapshots já armazenados, inclusive
+os pedidos anteriores à janela, **não são removidos** por este hotfix.
+
+Validação operacional após deploy, com sincronização manual explicitamente
+habilitada no ambiente local:
+
+```bash
+curl -sS -u admin 'http://localhost:18080/api/v1/analytics/runs' | jq
+docker compose logs --no-color --since=10m api | grep 'ANALYTICS_ORDER_SYNC_FAILURE'
+```
+
+**Limitação:** o hotfix detecta quando o provedor ignora, interpreta
+diferentemente ou descumpre os limites enviados; não presume a causa nem
+reinterpreta os filtros silenciosamente. Se surgir
+`ORDER_BEFORE_LOWER_BOUND`, investigar contrato e tráfego sem registrar
+pedidos brutos, antes de corrigir a estratégia de busca. O backfill histórico
+integral e a reconstituição de estados anteriores seguem fora do escopo.
