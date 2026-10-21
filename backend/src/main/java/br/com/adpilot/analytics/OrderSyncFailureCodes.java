@@ -23,7 +23,9 @@ final class OrderSyncFailureCodes {
             if (status != null && status >= 400 && status <= 599) {
                 return "ORDER_API_HTTP_" + status;
             }
-            return switch (upstream.code()) {
+            String code = upstream.code();
+            if (code == null) return "ORDER_API_FAILURE";
+            return switch (code) {
                 case "NUVEMSHOP_NOT_CONNECTED" -> "ORDER_API_NOT_CONNECTED";
                 case "NUVEMSHOP_UNAVAILABLE" -> "ORDER_API_UNAVAILABLE";
                 case "NUVEMSHOP_EMPTY_RESPONSE" -> "ORDER_API_EMPTY_RESPONSE";
@@ -35,7 +37,9 @@ final class OrderSyncFailureCodes {
 
         if (failure instanceof IllegalStateException) {
             // Exact allowlist only. Unknown messages may contain upstream data.
-            return switch (failure.getMessage()) {
+            String message = failure.getMessage();
+            if (message == null) return "ORDER_COLLECTION_FAILED";
+            return switch (message) {
                 case "ORDER_BEFORE_LOWER_BOUND" -> "ORDER_BEFORE_LOWER_BOUND";
                 case "ORDER_AFTER_UPPER_BOUND" -> "ORDER_AFTER_UPPER_BOUND";
                 case "INVALID_ORDER_WINDOW" -> "ORDER_WINDOW_INVALID";
