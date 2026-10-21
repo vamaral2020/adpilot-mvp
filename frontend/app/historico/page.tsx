@@ -126,6 +126,20 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
           foi causado pelo anúncio, nem representa pedidos individualmente conciliados.</p>
       </section>
 
+      <section className="historyCard" aria-label="Recomendações para campanhas">
+        <div className="historySectionHead">
+          <div>
+            <h2>O que pode ser melhorado nos anúncios?</h2>
+            <p>Receba uma análise consultiva de retorno atribuído, custo por compra e tendências
+              da campanha, com explicações e limites de confiança.</p>
+          </div>
+          <Link className="historyRecommendationsLink"
+            href={"/recomendacoes?since="+period.since+"&until="+period.until}>
+            Analisar campanhas →
+          </Link>
+        </div>
+      </section>
+
       <section className="historyCampaignList historyCard" aria-labelledby="historyCampaignListTitle">
         <div className="historySectionHead">
           <div>
