@@ -714,3 +714,42 @@ reinterpreta os filtros silenciosamente. Se surgir
 `ORDER_BEFORE_LOWER_BOUND`, investigar contrato e tráfego sem registrar
 pedidos brutos, antes de corrigir a estratégia de busca. O backfill histórico
 integral e a reconstituição de estados anteriores seguem fora do escopo.
+
+## PR 017 — Recomendações consultivas Meta Ads
+
+O motor analisa apenas os Insights diários de campanha da Meta Ads previamente persistidos. Não associa pedidos Nuvemshop nem diagnostica criativos, públicos ou conjuntos de anúncios. Os indicadores são atribuídos pela Meta, sujeitos a revisões posteriores.
+
+### Interface e API
+
+- Página: http://localhost:13000/recomendacoes (também acessível a partir do histórico).
+- Prévia GET /api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20&targetRoas=3&targetCpa=50. Apenas leitura.
+- POST /api/v1/analytics/recommendations/evaluations: JSON com since, until, targetRoas e targetCpa. Persiste somente no PostgreSQL local, nunca na Meta Ads.
+- Metas de ROAS e CPA opcionais. Nenhum objetivo financeiro é inventado. Períodos de 1 a 90 dias, sem datas futuras. HTTP Basic e Cache-Control: no-store.
+
+### Regras v1
+
+- LOW_SAMPLE: menos de cinco compras atribuídas, menos de três dias registrados ou menos de sete dias selecionados. Apenas monitorar.
+- SPEND_WITHOUT_PURCHASES: zero compras, pelo menos três dias e investimento >= 2 vezes o CPA máximo informado. Investigar, não pausar automaticamente.
+- ROAS_BELOW_TARGET / CPA_ABOVE_TARGET: cinco ou mais compras, sete dias ou mais no período e três dias com registros; comparação com meta fornecida. Investigar.
+- CTR_DECLINING / CPC_INCREASING: quatorze dias no período, cada metade com pelo menos dois dias registrados, 500 impressões e dez cliques. Detecta queda de CTR >= 30% ou aumento CPC >= 30%. Métricas usam cliques totais, não cliques no link.
+- FAVORABLE_PERFORMANCE: dez ou mais compras, metas informadas e atendidas. Apenas monitorar possível oportunidade, nunca aumentar orçamento automaticamente.
+- NO_META_INSIGHTS / INVALID_CAMPAIGN_DATA: dados ausentes, moedas divergentes ou dias duplicados, sem inventar valores zero nem converter moedas.
+- CONFIGURE_GOALS: ausência de metas econômicas informadas.
+
+### Integridade e auditoria
+
+A cobertura histórica permanece não comprovada, mesmo após sincronização bem-sucedida. Assim, a confiança é sempre LOW ou INSUFFICIENT; prioridade indica atenção, não autorização de ação. Não existem recomendações executáveis de pausa, mudança de orçamento ou alteração de anúncios.
+
+O POST explícito gera um evaluationId em analytics_recommendation_evaluation e salva recomendações DRAFT com regra/versão, campanha, justificativa e evidências numéricas nas tabelas analytics_recommendation e analytics_recommendation_evidence. A migration V4__recommendation_evaluations.sql preserva os dados anteriores. Cada execução é registrada separadamente.
+
+Exemplo de preview (senha solicitada pelo terminal):
+
+```bash
+curl -sS -u admin 'http://localhost:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20&targetRoas=3&targetCpa=50' | jq
+```
+
+Exemplo de gravação local deliberada:
+
+```bash
+curl -sS -u admin -H 'Content-Type: application/json' --data '{"since":"2026-10-14","until":"2026-10-20","targetRoas":3,"targetCpa":50}' 'http://localhost:18080/api/v1/analytics/recommendations/evaluations' | jq
+```
