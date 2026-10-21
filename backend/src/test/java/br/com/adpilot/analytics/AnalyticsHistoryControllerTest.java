@@ -1,40 +1,33 @@
 package br.com.adpilot.analytics;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.verifyNoInteractions;
-
-import java.time.LocalDate;
-import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.web.server.ResponseStatusException;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import br.com.adpilot.analytics.AnalyticsHistoryModels.History;
+import java.time.LocalDate;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 
 class AnalyticsHistoryControllerTest {
-    private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
-    private final AnalyticsHistoryController controller = new AnalyticsHistoryController(jdbc);
+    private final AnalyticsHistoryService service = mock(AnalyticsHistoryService.class);
+    private final AnalyticsHistoryController controller = new AnalyticsHistoryController(service);
 
     @Test
-    void rejectsReversedDateRangeBeforeDatabaseAccess() {
-        var e = assertThrows(ResponseStatusException.class, () ->
-                controller.history(LocalDate.of(2026, 10, 20), LocalDate.of(2026, 10, 19)));
-        assertEquals(400, e.getStatusCode().value());
-        verifyNoInteractions(jdbc);
-    }
+    void delegatesToServiceAndDisablesResponseCaching() {
+        var since = LocalDate.of(2026, 10, 1);
+        var until = LocalDate.of(2026, 10, 7);
+        var payload = new History(since, until, List.of(), List.of(), List.of(), false,
+                List.of("HISTORICAL_COVERAGE_NOT_VERIFIED"));
+        when(service.history(since, until)).thenReturn(payload);
 
-    @Test
-    void rejectsMoreThanNinetyDaysBeforeDatabaseAccess() {
-        var e = assertThrows(ResponseStatusException.class, () ->
-                controller.history(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 4, 1)));
-        assertEquals(400, e.getStatusCode().value());
-        verifyNoInteractions(jdbc);
-    }
+        var response = controller.history(since, until);
 
-    @Test
-    void rejectsFutureUntilBeforeDatabaseAccess() {
-        var e = assertThrows(ResponseStatusException.class, () ->
-                controller.history(LocalDate.of(2099, 1, 1), LocalDate.of(2099, 1, 2)));
-        assertEquals(400, e.getStatusCode().value());
-        verifyNoInteractions(jdbc);
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(payload, response.getBody());
+        assertEquals("no-store", response.getHeaders().getCacheControl());
+        verify(service).history(since, until);
     }
 }
