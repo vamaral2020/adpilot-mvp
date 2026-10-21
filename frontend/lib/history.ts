@@ -1,7 +1,8 @@
 export type MetaDay = { date: string; currency: string; spend: number; impressions: number; clicks: number; attributedPurchases: number; attributedRevenue: number };
 export type StoreDay = { date: string; currency: string; paidOrders: number; paidRevenue: number };
+export type CampaignResult = { accountId: string; campaignId: string; name: string; currency: string; spend: number; impressions: number; clicks: number; attributedPurchases: number; attributedRevenue: number };
 export type SourceState = { provider: string; resource: string; lastStatus: string | null; lastSuccess: string | null; cursorAt: string | null };
-export type AnalyticsHistory = { since: string; until: string; meta: MetaDay[]; store: StoreDay[]; sources: SourceState[]; complete: boolean; warnings: string[] };
+export type AnalyticsHistory = { since: string; until: string; meta: MetaDay[]; store: StoreDay[]; campaigns: CampaignResult[]; sources: SourceState[]; complete: boolean; warnings: string[] };
 
 export function sums(rows: { currency: string; value: number }[]): { currency: string; value: number } | null {
   const currencies = new Set(rows.map(row => row.currency));
