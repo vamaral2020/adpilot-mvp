@@ -118,6 +118,13 @@ public class AnalyticsCollector {
                 String status = safeStatus(item.get("status"));
                 String payment = safeStatus(item.get("payment_status"));
                 Instant updated = requiredInstant(item.get("updated_at"));
+                // Upstream filters are not assumed reliable. Enforce a bounded
+                // tolerance for timestamp precision/clock skew at both limits.
+                // Fail the complete window: never silently ignore outside rows
+                // and then advance the sync checkpoint.
+                if (updated.isBefore(lower.minusSeconds(60))) {
+                    throw new IllegalStateException("ORDER_BEFORE_LOWER_BOUND");
+                }
                 if (updated.isAfter(upper.plusSeconds(60))) {
                     throw new IllegalStateException("ORDER_AFTER_UPPER_BOUND");
                 }
