@@ -126,6 +126,39 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
           foi causado pelo anúncio, nem representa pedidos individualmente conciliados.</p>
       </section>
 
+      <section className="historyCampaignList historyCard" aria-labelledby="historyCampaignListTitle">
+        <div className="historySectionHead">
+          <div>
+            <h2 id="historyCampaignListTitle">Resultado de cada campanha</h2>
+            <p>Veja onde o investimento foi aplicado e quantas compras a Meta atribuiu a cada campanha.</p>
+          </div>
+          <span className="historySourceTag">Atribuição Meta · dados disponíveis</span>
+        </div>
+        {history.campaigns.length === 0
+          ? <p className="historySmall">Não há resultados de campanha armazenados neste período. Isso não comprova gasto ou vendas iguais a zero.</p>
+          : <div className="tableScroll"><table className="historyCampaignTable">
+              <thead><tr>
+                <th>Campanha</th><th>Investimento Meta</th>
+                <th>Compras atribuídas</th><th>Receita atribuída</th><th>ROAS indicativo</th>
+              </tr></thead>
+              <tbody>{history.campaigns.map(c => {
+                const rowRoas = Number.isFinite(c.spend) && c.spend > 0
+                  && Number.isFinite(c.attributedRevenue) && c.attributedRevenue >= 0
+                  ? c.attributedRevenue / c.spend : null;
+                return <tr key={c.accountId + ":" + c.campaignId + ":" + c.currency}>
+                  <td><strong>{c.name || c.campaignId}</strong><span className="historyCampaignId">ID: {c.campaignId}</span></td>
+                  <td>{money(c.spend,c.currency)}</td>
+                  <td>{Number.isFinite(c.attributedPurchases) && c.attributedPurchases >= 0
+                    ? number(c.attributedPurchases,2) : "—"}</td>
+                  <td>{money(c.attributedRevenue,c.currency)}</td>
+                  <td>{rowRoas === null ? "—" : number(rowRoas,2) + "x"}</td>
+                </tr>;
+              })}</tbody>
+            </table></div>}
+        <p className="historySmall">Os resultados por campanha são reportados pela Meta, não por conciliação individual de pedidos da Nuvemshop.
+          Campanhas sem registros no período podem não aparecer nesta tabela.</p>
+      </section>
+
       <section className="historyStorePanel" aria-labelledby="historyStoreTitle">
         <div className="historySectionHead">
           <div>
