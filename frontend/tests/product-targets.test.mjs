@@ -27,11 +27,11 @@ test("R$ 199: computes total unit economics from cents and rounded fees", () => 
     packaging:300, shippingSubsidy:1500, other:200,
   });
   assert.equal(r.totalCostCents,13486);
-  assert.equal(r.contributionCents,5414);
-  assert.equal(r.breakEvenCpaCents,5414);
-  assert.equal(r.targetCpaCents,3414);
-  assert.equal(r.breakEvenRoas,3.68); // ceil(199/54.14, 2 decimals)
-  assert.equal(r.targetRoas,5.83); // ceil(199/34.14, 2 decimals)
+  assert.equal(r.contributionCents,6414);
+  assert.equal(r.breakEvenCpaCents,6414);
+  assert.equal(r.targetCpaCents,4414);
+  assert.equal(r.breakEvenRoas,3.11); // ceil(199/64.14, 2 decimals)
+  assert.equal(r.targetRoas,4.51); // ceil(199/44.14, 2 decimals)
   assert.equal(r.status,"READY");
 });
 
