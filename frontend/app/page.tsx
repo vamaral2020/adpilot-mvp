@@ -142,6 +142,10 @@ function RecommendationSpotlight({ preview, period }: {
           Campanha: {focus.campaignName}</p>}
         <h3>{focus.title}</h3>
         <p>{focus.explanation}</p>
+        {focus.qualityStatus && <p className="recommendationSpotlightQuality">
+          <strong>Coleta Meta:</strong> {focus.collectedDays} de {focus.requestedDays} dias
+          com consulta comprovada. {focus.qualitySummary}
+        </p>}
       </div>
       {focus.kind === "advice" && <div className="recommendationSpotlightEvidence"
         aria-label="Evidências históricas da recomendação">
