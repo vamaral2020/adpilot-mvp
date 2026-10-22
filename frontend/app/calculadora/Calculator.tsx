@@ -4,31 +4,33 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { money, number } from "../../lib/dashboard";
 import {
-  calculateProductTargets, EMPTY_COST_FORM,
+  calculateProductTargets, calculateProductContribution, PRICE_FIELDS, EMPTY_COST_FORM,
   type CostForm, type PriceField, type CostErrors,
 } from "../../lib/product-targets";
 
 const formatMoney = (cents: number) => money(cents / 100,"BRL");
 const formatRoas = (value: number) => number(value,2) + "x";
 
-function Field({field,label,description,value,errors,onChange,percentage=false}:{
+function Field({field,label,description,value,errors,onChange,onBlur,percentage=false}:{
   field: PriceField;
   label: string;
   description: string;
   value: string;
   errors: CostErrors;
   onChange: (name: PriceField, value: string)=>void;
+  onBlur: (field: PriceField)=>void;
   percentage?: boolean;
 }) {
   const error=errors[field];
   const id="calc-"+field;
   return <div className="calcField">
-    <label htmlFor={id}>{label}</label>
+    <label htmlFor={id}>{label} <span className="calcRequiredMark" title="Obrigatório">*</span></label>
     <div className={"calcFieldControl"+(error?" calcFieldInvalid":"")}>
       <span aria-hidden="true">{percentage?"%":"R$"}</span>
       <input id={id} name={field} type="text" inputMode="decimal" autoComplete="off"
-        maxLength={18} spellCheck={false}
-        placeholder={percentage?"0,00":"0,00"} value={value}
+        maxLength={18} spellCheck={false} required aria-required="true"
+        placeholder="0,00" value={value}
+        onBlur={()=>onBlur(field)}
         aria-invalid={Boolean(error)}
         aria-describedby={id+"-help"+(error?" "+id+"-error":"")}
         onChange={event=>onChange(field,event.target.value)}/>
@@ -40,21 +42,22 @@ function Field({field,label,description,value,errors,onChange,percentage=false}:
 
 export default function Calculator() {
   const [form,setForm]=useState<CostForm>({...EMPTY_COST_FORM});
-  const [showValidation,setShowValidation]=useState(false);
+  const [touched,setTouched]=useState<Partial<Record<PriceField,boolean>>>({});
   const [copyState,setCopyState]=useState<"idle"|"done"|"error">("idle");
   const calculation=useMemo(()=>calculateProductTargets(form),[form]);
+  const contribution=useMemo(()=>calculateProductContribution(form),[form]);
+  const missingFields=PRICE_FIELDS.filter(field=>!form[field].trim());
   const errors: CostErrors={};
   if(!calculation.ok) {
-    for(const [field,description] of Object.entries(calculation.errors)) {
-      if(showValidation || form[field as PriceField].trim()) {
-        errors[field as PriceField]=description;
-      }
+    for(const [key,description] of Object.entries(calculation.errors)) {
+      const field=key as PriceField;
+      if(touched[field] || form[field].trim()) errors[field]=description;
     }
   }
+  const markTouched=(field: PriceField)=>setTouched(previous=>({...previous,[field]:true}));
   const update=(field: PriceField,value: string)=>{
     setForm(previous=>({...previous,[field]:value}));
     setCopyState("idle");
-    if(!showValidation) setShowValidation(true);
   };
   const result=calculation.ok?calculation.result:null;
   const feasible=result?.status==="READY"
@@ -81,7 +84,8 @@ export default function Calculator() {
     }
   }
 
-  const initialMissing=!form.productCost.trim() || !form.desiredProfit.trim();
+  const preAdMargin=contribution.ok?contribution.result:null;
+  const missingCount=missingFields.length;
 
   return <main className="calcPage">
     <header className="calcHeader">
@@ -108,47 +112,69 @@ export default function Calculator() {
               O preço de R$ 199 é apenas o exemplo inicial e pode ser alterado.</p>
           </div>
         </div>
+        <p className="calcRequiredNotice">
+          Preencha <strong>todos os campos</strong>. Quando uma despesa não existir,
+          informe <strong>0</strong>. Campos vazios não são considerados custo zero.
+        </p>
         <div className="calcFieldGrid">
           <Field field="price" label="Preço de venda" description="Valor bruto cobrado pelo produto, sem frete adicional."
-            value={form.price} errors={errors} onChange={update}/>
+            value={form.price} errors={errors} onChange={update} onBlur={markTouched}/>
           <Field field="productCost" label="Custo da mercadoria" description="Quanto custa adquirir ou produzir uma unidade."
-            value={form.productCost} errors={errors} onChange={update}/>
-          <Field field="desiredProfit" label="Resultado desejado por venda" description="Quanto deseja reservar após pagar anúncios; antes dos custos fixos não informados."
-            value={form.desiredProfit} errors={errors} onChange={update}/>
+            value={form.productCost} errors={errors} onChange={update} onBlur={markTouched}/>
         </div>
-        <details className="calcOptional">
-          <summary>
-            <span>Adicionar impostos, taxas e outros custos</span>
-            <span className="calcOptionalHint">Detalhes opcionais <span aria-hidden="true">⌄</span></span>
-          </summary>
-          <p>Campos vazios contam como <strong>zero</strong>. Preencha os custos aplicáveis
-            para evitar metas de publicidade excessivamente otimistas.</p>
+        <section className="calcOptional" aria-labelledby="calc-extra-costs-heading">
+          <div className="calcOptionalHeading">
+            <h3 id="calc-extra-costs-heading">Custos adicionais da venda</h3>
+            <span>Todos obrigatórios · digite 0 se não houver</span>
+          </div>
+          <p>Impostos, taxas, frete e demais despesas reduzem o valor disponível
+            para publicidade. Informe os custos que realmente se aplicam à venda.</p>
           <div className="calcFieldGrid">
             <Field field="taxPercent" label="Impostos sobre venda (%)"
               description="Percentual do preço bruto destinado aos tributos."
-              value={form.taxPercent} errors={errors} onChange={update} percentage/>
+              value={form.taxPercent} errors={errors} onChange={update} onBlur={markTouched} percentage/>
             <Field field="paymentPercent" label="Taxa de pagamento (%)"
               description="Percentual cobrado pelo intermediador do pagamento."
-              value={form.paymentPercent} errors={errors} onChange={update} percentage/>
+              value={form.paymentPercent} errors={errors} onChange={update} onBlur={markTouched} percentage/>
             <Field field="paymentFixed" label="Tarifa fixa do pagamento"
               description="Cobrança adicional fixa por transação."
-              value={form.paymentFixed} errors={errors} onChange={update}/>
+              value={form.paymentFixed} errors={errors} onChange={update} onBlur={markTouched}/>
             <Field field="shippingSubsidy" label="Frete pago pela loja"
               description="Parcela do frete que não é repassada ao cliente."
-              value={form.shippingSubsidy} errors={errors} onChange={update}/>
+              value={form.shippingSubsidy} errors={errors} onChange={update} onBlur={markTouched}/>
             <Field field="packaging" label="Embalagem"
               description="Caixa, sacola, proteção, etiqueta e materiais."
-              value={form.packaging} errors={errors} onChange={update}/>
+              value={form.packaging} errors={errors} onChange={update} onBlur={markTouched}/>
             <Field field="otherCosts" label="Outros custos variáveis"
               description="Comissões e provisões por venda não incluídas acima."
-              value={form.otherCosts} errors={errors} onChange={update}/>
+              value={form.otherCosts} errors={errors} onChange={update} onBlur={markTouched}/>
           </div>
-        </details>
+        </section>
+        <div className="calcAutoMargin" aria-live="polite">
+          <div>
+            <span className="smallEyebrow">CALCULADO AUTOMATICAMENTE</span>
+            <h3>Resultado da venda antes dos anúncios</h3>
+            <p>Preço de venda menos todos os custos informados.
+              É o limite disponível para publicidade e para o resultado que deseja manter.</p>
+          </div>
+          <output className={preAdMargin && preAdMargin.contributionCents <= 0
+            ? "calcNegative" : ""}>
+            {preAdMargin?formatMoney(preAdMargin.contributionCents):"Aguardando custos"}
+          </output>
+        </div>
+        <div className="calcProfitReserve">
+          <h3>Quanto deseja preservar após a publicidade?</h3>
+          <p>Essa escolha é separada do resultado calculado acima.
+            Se preservar toda a margem, não sobrará verba para os anúncios.
+            Para considerar apenas o ponto de equilíbrio, informe 0.</p>
+          <Field field="desiredProfit" label="Resultado mínimo a preservar" description="Valor por venda a manter depois do gasto com anúncios e antes de custos fixos não informados."
+            value={form.desiredProfit} errors={errors} onChange={update} onBlur={markTouched}/>
+        </div>
         <div className="calcPanelFooter">
           <p>Use ponto ou vírgula decimal, por exemplo: 85,50 ou 85.50.
             Não use separador de milhares.</p>
           <button type="button" className="calcReset" onClick={()=>{
-            setForm({...EMPTY_COST_FORM});setShowValidation(false);setCopyState("idle");
+            setForm({...EMPTY_COST_FORM});setTouched({});setCopyState("idle");
           }}>Limpar valores</button>
         </div>
       </section>
@@ -164,9 +190,11 @@ export default function Calculator() {
         </div>
 
         {!result && <div className="calcEmpty" role="status">
-          <strong>{initialMissing?"Informe o custo e o resultado desejado":"Revise os valores informados"}</strong>
-          <p>{initialMissing
-            ? "Para calcular metas utilizáveis, preencha o custo da peça e quanto deseja reservar por venda. Pode informar zero explicitamente, se for o caso."
+          <strong>{missingCount>0
+            ? `Faltam ${missingCount} ${missingCount===1?"campo":"campos"} para calcular suas metas`
+            : "Revise os valores informados"}</strong>
+          <p>{missingCount>0
+            ? "Todos os campos precisam ser preenchidos. Informe 0 quando não houver determinado custo ou quando não desejar preservar resultado após os anúncios."
             : "Os campos precisam conter valores não negativos e percentuais de até 100%."}</p>
         </div>}
 
@@ -178,7 +206,7 @@ export default function Calculator() {
           </div>}
           {result.status==="GOAL_NOT_FEASIBLE" && <div className="calcWarning" role="status">
             <strong>A margem não comporta o resultado desejado.</strong>
-            <p>O lucro desejado consome toda a margem antes da publicidade.
+            <p>O resultado que deseja preservar consome toda a margem antes da publicidade.
               Não há um CPA positivo compatível com essa meta.</p>
           </div>}
 

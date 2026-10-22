@@ -1,7 +1,7 @@
 /**
- * Frontend-only unit economics for ONE item in ONE order.
- * Inputs accept ungrouped pt-BR decimals; money stays in integer cents and
- * percent rates in integer basis points. No store/Meta reads or writes.
+ * Frontend-only, per-unit economics. All cost inputs must be explicitly
+ * acknowledged (enter "0" when a cost does not apply); no silent defaults.
+ * BRL values remain integer cents, percentage rates are integer basis points.
  */
 export const PRICE_FIELDS = [
   "price", "productCost", "desiredProfit", "taxPercent", "paymentPercent",
@@ -9,6 +9,11 @@ export const PRICE_FIELDS = [
 ] as const;
 
 export type PriceField = typeof PRICE_FIELDS[number];
+export type CostField = Exclude<PriceField, "desiredProfit">;
+export const COST_FIELDS: readonly CostField[] = PRICE_FIELDS.filter(
+  (field): field is CostField => field !== "desiredProfit",
+);
+
 export type CostForm = Record<PriceField, string>;
 export type CostErrors = Partial<Record<PriceField, string>>;
 export type CostBreakdown = {
@@ -20,25 +25,33 @@ export type CostBreakdown = {
   shippingSubsidy: number;
   other: number;
 };
-export type CostResult = {
+
+export type Contribution = {
   priceCents: number;
   totalCostCents: number;
   contributionCents: number;
   marginPercent: number;
+  breakdown: CostBreakdown;
+};
+
+export type CostResult = Contribution & {
   desiredProfitCents: number;
   breakEvenCpaCents: number | null;
   targetCpaCents: number | null;
   breakEvenRoas: number | null;
   targetRoas: number | null;
-  breakdown: CostBreakdown;
   status: "NO_CONTRIBUTION" | "GOAL_NOT_FEASIBLE" | "READY";
 };
+
 export type Calculation =
   | { ok: false; errors: CostErrors }
   | { ok: true; result: CostResult };
+export type ContributionCalculation =
+  | { ok: false; errors: CostErrors }
+  | { ok: true; result: Contribution };
 
 export const EMPTY_COST_FORM: CostForm = {
-  price: "199", // prefilled as the user's example, not a saved product
+  price: "199", // sample price; always editable
   productCost: "",
   desiredProfit: "",
   taxPercent: "",
@@ -52,9 +65,9 @@ export const EMPTY_COST_FORM: CostForm = {
 const MAX_AMOUNT_CENTS = 100_000_000; // R$ 1,000,000.00 per field
 const amountPattern = /^\d+(?:[.,]\d{1,2})?$/;
 
-function parseFixed(raw: string, required: boolean, maximum: number): number | string {
+function parseFixed(raw: string, maximum: number): number | string {
   const value = raw.trim();
-  if (!value) return required ? "Preencha este campo." : 0;
+  if (!value) return "Preencha este campo. Digite 0 quando não houver custo.";
   if (!amountPattern.test(value)) {
     return "Use apenas números, sem milhares, com vírgula ou ponto e até 2 casas decimais.";
   }
@@ -69,35 +82,28 @@ function parseFixed(raw: string, required: boolean, maximum: number): number | s
   return units;
 }
 
-/** Percentage in 1/100 of 1% (basis points): 4,50% = 450. */
+/** Percentage in basis points: 4,50% => 450. */
 function parsePercent(raw: string): number | string {
-  const bps = parseFixed(raw, false, 10_000);
-  return typeof bps === "string" ? bps : bps;
+  return parseFixed(raw,10_000);
 }
 
-/**
- * A target ROAS rounded UP to two decimals avoids recommending a
- * visibly smaller threshold than the exact mathematical requirement.
- */
-function roasCeiling(priceCents: number, cpaCents: number): number | null {
-  if (cpaCents <= 0) return null;
-  return Math.ceil(priceCents * 100 / cpaCents) / 100;
-}
-
-export function calculateProductTargets(form: CostForm): Calculation {
+function readFields(form: CostForm, fields: readonly PriceField[]) {
   const errors: CostErrors = {};
   const amounts = {} as Record<PriceField, number>;
-  for (const field of PRICE_FIELDS) {
+  for (const field of fields) {
     const parsed = field === "taxPercent" || field === "paymentPercent"
       ? parsePercent(form[field])
-      : parseFixed(form[field], field === "price"
-          || field === "productCost" || field === "desiredProfit", MAX_AMOUNT_CENTS);
+      : parseFixed(form[field],MAX_AMOUNT_CENTS);
     if (typeof parsed === "string") errors[field] = parsed;
     else amounts[field] = parsed;
   }
-  if (amounts.price === 0) errors.price = "O preço de venda deve ser maior que zero.";
-  if (Object.keys(errors).length > 0) return { ok: false, errors };
+  if (fields.includes("price") && amounts.price === 0) {
+    errors.price = "O preço de venda deve ser maior que zero.";
+  }
+  return { amounts, errors };
+}
 
+function calculateValidatedContribution(amounts: Record<PriceField,number>): Contribution {
   const priceCents = amounts.price;
   const tax = Math.round(priceCents * amounts.taxPercent / 10_000);
   const paymentPercent = Math.round(priceCents * amounts.paymentPercent / 10_000);
@@ -112,24 +118,52 @@ export function calculateProductTargets(form: CostForm): Calculation {
   };
   const totalCostCents = Object.values(breakdown).reduce((a,b) => a+b,0);
   const contributionCents = priceCents - totalCostCents;
-  const targetCpaCentsRaw = contributionCents - amounts.desiredProfit;
-  const status: CostResult["status"] = contributionCents <= 0
+  return {
+    priceCents,
+    totalCostCents,
+    contributionCents,
+    marginPercent: contributionCents / priceCents * 100,
+    breakdown,
+  };
+}
+
+/**
+ * Computed "result before ads" is available as soon as every product/cost
+ * field has been explicitly filled, regardless of the profit-to-preserve field.
+ */
+export function calculateProductContribution(form: CostForm): ContributionCalculation {
+  const { amounts, errors } = readFields(form,COST_FIELDS);
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
+  return { ok: true, result: calculateValidatedContribution(amounts) };
+}
+
+/** Always round the displayed ROAS UP to avoid understating its threshold. */
+function roasCeiling(priceCents: number, cpaCents: number): number | null {
+  if (cpaCents <= 0) return null;
+  return Math.ceil(priceCents * 100 / cpaCents) / 100;
+}
+
+export function calculateProductTargets(form: CostForm): Calculation {
+  const { amounts, errors } = readFields(form,PRICE_FIELDS);
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
+
+  const contribution = calculateValidatedContribution(amounts);
+  const targetCpaCentsRaw = contribution.contributionCents - amounts.desiredProfit;
+  const status: CostResult["status"] = contribution.contributionCents <= 0
     ? "NO_CONTRIBUTION"
     : targetCpaCentsRaw <= 0 ? "GOAL_NOT_FEASIBLE" : "READY";
 
   return {
     ok: true,
     result: {
-      priceCents,
-      totalCostCents,
-      contributionCents,
-      marginPercent: contributionCents / priceCents * 100,
+      ...contribution,
       desiredProfitCents: amounts.desiredProfit,
-      breakEvenCpaCents: contributionCents > 0 ? contributionCents : null,
+      breakEvenCpaCents: contribution.contributionCents > 0
+        ? contribution.contributionCents : null,
       targetCpaCents: status === "READY" ? targetCpaCentsRaw : null,
-      breakEvenRoas: roasCeiling(priceCents,contributionCents),
-      targetRoas: status === "READY" ? roasCeiling(priceCents,targetCpaCentsRaw) : null,
-      breakdown,
+      breakEvenRoas: roasCeiling(contribution.priceCents,contribution.contributionCents),
+      targetRoas: status === "READY"
+        ? roasCeiling(contribution.priceCents,targetCpaCentsRaw) : null,
       status,
     },
   };
