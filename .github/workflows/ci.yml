@@ -74,6 +74,17 @@ jobs:
           grep -Fq 'Fonte: histórico local' /tmp/adpilot-pr018-home.html
           grep -Fq 'Diagnósticos e auditorias' /tmp/adpilot-pr018-home.html
           grep -Fq 'Histórico de campanhas ainda indisponível' /tmp/adpilot-pr018-home.html
+          # PR 019: calculator is an authenticated client-side planner with no backend writes.
+          test "$(curl -s -o /dev/null -w '%{http_code}' \
+            'http://127.0.0.1:13000/calculadora')" = "401"
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:13000/calculadora' -o /tmp/adpilot-pr019-calculator.html
+          grep -Fq 'Calculadora de CPA e ROAS' /tmp/adpilot-pr019-calculator.html
+          grep -Fq 'Custo da mercadoria' /tmp/adpilot-pr019-calculator.html
+          grep -Fq 'Resultado desejado por venda' /tmp/adpilot-pr019-calculator.html
+          grep -Fq 'Metas calculadas' /tmp/adpilot-pr019-calculator.html
+          grep -Fq 'Planejar campanha' /tmp/adpilot-pr018-home.html
+
 
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:18080/api/v1/analytics/status | grep -q '"syncEnabled":false'
           # Execute historical SQL including per-campaign LATERAL aggregate against real PostgreSQL.
