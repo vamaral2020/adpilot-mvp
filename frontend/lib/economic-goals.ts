@@ -1,7 +1,7 @@
 import {
   calculateProductTargets, desiredProfitFromPercentage,
   type CostForm,
-} from "./product-targets";
+} from "./product-targets.ts";
 
 export type ProductGoalInput = {
   productLabel:string;
