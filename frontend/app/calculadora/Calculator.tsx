@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { money, number } from "../../lib/dashboard";
+import { makeProductGoalInput } from "../../lib/economic-goals";
 import {
   calculateProductTargets, calculateProductContribution, desiredProfitFromPercentage,
   COST_FIELDS, EMPTY_COST_FORM,
@@ -47,6 +48,9 @@ export default function Calculator() {
   const [percentTouched,setPercentTouched]=useState(false);
   const [touched,setTouched]=useState<Partial<Record<PriceField,boolean>>>({});
   const [copyState,setCopyState]=useState<"idle"|"done"|"error">("idle");
+  const [productLabel,setProductLabel]=useState("");
+  const [saveState,setSaveState]=useState<"idle"|"saving"|"saved"|"error">("idle");
+  const [saveMessage,setSaveMessage]=useState("");
   const profit=useMemo(()=>desiredProfitFromPercentage(form.price,desiredProfitPercent),
     [form.price,desiredProfitPercent]);
   // Keep the existing CPA/ROAS formulas: translate the % into BRL before calling them.
@@ -70,6 +74,7 @@ export default function Calculator() {
   const update=(field: PriceField,value: string)=>{
     setForm(previous=>({...previous,[field]:value}));
     setCopyState("idle");
+    setSaveState("idle");
   };
   const result=calculation.ok?calculation.result:null;
   const feasible=result?.status==="READY"
@@ -94,6 +99,29 @@ export default function Calculator() {
       setCopyState("done");
     } catch {
       setCopyState("error");
+    }
+  }
+
+  async function saveEconomicGoal() {
+    const payload=makeProductGoalInput(form,desiredProfitPercent,productLabel);
+    if(!payload.ok) {
+      setSaveState("error");setSaveMessage(payload.error);return;
+    }
+    setSaveState("saving");setSaveMessage("");
+    try {
+      const response=await fetch("/api/planning/goals",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(payload.value),cache:"no-store",
+      });
+      if(!response.ok) {
+        setSaveState("error");
+        setSaveMessage(response.status===400?"Revise os custos e o lucro desejado."
+          :"Não foi possível salvar a meta local.");return;
+      }
+      setSaveState("saved");
+      setSaveMessage("Meta salva no AdPilot. Agora associe-a manualmente a uma campanha.");
+    }catch{
+      setSaveState("error");setSaveMessage("Serviço local indisponível.");
     }
   }
 
@@ -197,7 +225,7 @@ export default function Calculator() {
                   onBlur={()=>setPercentTouched(true)}
                   onChange={event=>{
                     setDesiredProfitPercent(event.target.value);
-                    setCopyState("idle");
+                    setCopyState("idle");setSaveState("idle");
                   }}/>
               </div>
               <p id="calc-desiredProfitPercent-help" className="calcFieldHelp">
@@ -222,6 +250,7 @@ export default function Calculator() {
           <button type="button" className="calcReset" onClick={()=>{
             setForm({...EMPTY_COST_FORM});setDesiredProfitPercent("17");
             setTouched({});setPercentTouched(false);setCopyState("idle");
+            setProductLabel("");setSaveState("idle");setSaveMessage("");
           }}>Restaurar valores iniciais</button>
         </div>
       </section>
@@ -310,6 +339,28 @@ export default function Calculator() {
 
           <button type="button" className="calcCopy" disabled={!feasible}
             onClick={copyTargets}>Copiar metas para planejar campanha</button>
+          <div className="calcSavePlan" aria-labelledby="calcSavePlanTitle">
+            <h3 id="calcSavePlanTitle">Salvar meta econômica deste produto</h3>
+            <p>Identifique o produto para reutilizar estes custos e metas em campanhas
+              explicitamente associadas. Cada salvamento cria uma versão imutável.</p>
+            <label htmlFor="calcProductLabel">Nome do produto (obrigatório para salvar)</label>
+            <input id="calcProductLabel" type="text" maxLength={120} value={productLabel}
+              autoComplete="off" placeholder="Ex.: Vestido midi azul"
+              onChange={e=>{setProductLabel(e.target.value);setSaveState("idle");}}/>
+            <div className="calcSaveActions">
+              <button type="button" className="calcCopy"
+                disabled={!feasible || saveState==="saving"}
+                onClick={saveEconomicGoal}>
+                {saveState==="saving"?"Salvando...":"Salvar meta do produto"}
+              </button>
+              <Link href="/planejamento">Associar metas às campanhas →</Link>
+            </div>
+            {saveState!=="idle" && <p role="status" className={
+              saveState==="error"?"calcFieldError":"calcFieldHelp"}>{saveMessage}</p>}
+            <small>O nome é informado manualmente. Isso não verifica o cadastro
+              do produto na Nuvemshop nem identifica quais produtos foram vendidos
+              em cada compra atribuída pela Meta.</small>
+          </div>
           {copyState==="done" && <p className="calcCopyStatus" role="status">
             Metas copiadas. Confira as opções de estratégia de lance disponíveis na Meta.</p>}
           {copyState==="error" && <p className="calcCopyStatus calcCopyError" role="status">
