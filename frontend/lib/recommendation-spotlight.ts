@@ -70,10 +70,11 @@ function validAdvice(value: RecommendationAdvice): boolean {
  * Missing historical records remain missing; never interpret them as zero.
  */
 export function selectSpotlight(preview?: RecommendationPreview): Spotlight {
-  const fallback = {
+  const fallback: Pick<Spotlight, "campaignName" | "ruleCode" | "confidence" | "evidence"
+    | "currency" | "coverageVerified" | "syncUnconfirmed"> = {
     campaignName: null, ruleCode: null, confidence: null, evidence: [],
     currency: null, coverageVerified: false, syncUnconfirmed: false,
-  } as const;
+  };
   if (!preview || !Array.isArray(preview.recommendations)) {
     return {
       ...fallback, kind: "unavailable", title: "Recomendações indisponíveis",
