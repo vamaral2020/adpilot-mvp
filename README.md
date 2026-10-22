@@ -761,3 +761,23 @@ Os campos ROAS mínimo e CPA máximo na página de recomendações aceitam vírg
 Corrigido o conflito anterior entre `min=0.0001` e `step=0.01`, que bloqueava valores como `3,4`. Entradas inválidas exibem erro claro em vez de apagar silenciosamente a meta e retornar `CONFIGURE_GOALS`. A interface mostra as metas efetivamente usadas no último resultado e informa que alterações requerem clicar em **Analisar campanhas**.
 
 A explicação da regra `LOW_SAMPLE` agora exibe quantidades sem zeros decimais desnecessários e usa singular/plural em português, preservando atribuições fracionárias da Meta quando ocorrerem. O motor e suas limitações de cobertura, a API e a persistência permanecem inalterados. Adicionados testes unitários e smoke de API.
+
+## PR 018 — Experiência comercial e recomendações em primeiro plano
+
+A página inicial mantém os mesmos indicadores financeiros consultados diretamente dos Insights da Meta Ads, mas agora traz o painel **O que fazer agora?** imediatamente depois dos quatro KPIs. O painel lê a prévia **somente leitura** em `GET /api/v1/analytics/recommendations` para o mesmo período de datas, utilizando exclusivamente os snapshots Meta previamente armazenados. Não realiza sincronização, gravação, alteração de anúncios ou nova atribuição por pedido.
+
+A orientação diferencia explicitamente os dados **históricos locais** dos KPIs consultados diretamente da Meta. O histórico pode estar desatualizado/incompleto: um erro ou ausência de linhas nunca se transforma em zero compras ou zero investimento. Recomendações por campanha têm prioridade visual sobre solicitações genéricas de configuração de metas; a falta dessas metas segue visível na página própria `/recomendacoes`.
+
+### Navegação e hierarquia
+
+- O menu principal passa a oferecer **Recomendações** (funcional), removendo o antigo módulo incorretamente rotulado 'Recomendações IA — Em breve'. Links para Histórico e Recomendações preservam o período selecionado no dashboard.
+- Os quatro KPIs principais continuam com os mesmos cálculos e origem. A seção de orientação exibe, quando disponíveis, compras, ROAS e CPA **do histórico** de campanha, sem misturá-los com números ao vivo.
+- A seção comercial da Nuvemshop aparece antes das informações técnicas. Eficiência comparada, eventos Meta e auditoria de pagamentos permanecem acessíveis dentro de **Diagnósticos e auditorias**, um componente `<details>` sem JavaScript (acessível por teclado).
+- A tabela de campanhas torna-se um conjunto de cartões em telas estreitas, preservando campanha, status, investimento, compras atribuídas, receita atribuída e ROAS; os detalhes de custo, cliques e participação permanecem disponíveis na tabela em telas maiores.
+- A versão de impressão prioriza KPIs, recomendações, campanhas e resultados comerciais, evitando imprimir colunas técnicas fora da largura da página.
+
+### Limitações preservadas
+
+O painel histórico nunca apresenta a ausência de registros como vendas iguais a zero; os status das campanhas continuam atuais e não retroativos. ROAS Meta não é lucro, MER da loja não é atribuição, e a Nuvemshop não dispõe de vínculo comprovado por pedido. Não há alterações em API Java, banco, migração, OAuth ou motor de regras.
+
+Testes adicionados validam a escolha conservadora da recomendação em diferentes cenários, enquanto o smoke test do Compose verifica a renderização da homepage sem dados históricos e sem degradação dos endpoints existentes.

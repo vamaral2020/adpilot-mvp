@@ -255,3 +255,154 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
   background:#14283b;color:#c4d9ee;font-size:12px;line-height:1.7}
 .recommendationsAppliedGoals strong{color:#e5f0fa}
 .recommendationsAppliedGoals span{display:block;flex-basis:100%;color:#8fa9c3}
+
+
+/* PR 018: the commercial recommendation follows the four financial KPIs. */
+.recommendationSpotlight{margin-top:20px;border:1px solid #396683;border-radius:17px;
+  padding:26px;background:linear-gradient(125deg,#173048 0%,#172638 55%,#121e30 100%);
+  scroll-margin-top:18px}
+.recommendationSpotlightTop{display:flex;justify-content:space-between;align-items:flex-start;
+  gap:18px;flex-wrap:wrap}
+.recommendationSpotlightTop h2{font-size:clamp(20px,2.1vw,26px);
+  letter-spacing:-.6px;margin:9px 0 7px;color:#ebf5ff}
+.recommendationSpotlightTop p{margin:0;line-height:1.6;color:#a8bfd5;font-size:12px}
+.recommendationSpotlightLink{display:inline-flex;gap:12px;align-items:center;justify-content:center;
+  border:1px solid #79a9f5;border-radius:9px;padding:12px 16px;
+  background:#76a8f7;color:#0c1b32;font-size:12px;font-weight:750;white-space:nowrap}
+.recommendationSpotlightLink:hover{background:#a6caff}
+.recommendationSpotlightLink:focus-visible{outline-color:#d1e6ff}
+.recommendationSpotlightContent{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(250px,1fr);
+  gap:20px;margin:22px 0 0}
+.recommendationSpotlightMessage{min-width:0}
+.recommendationSpotlightChip{display:inline-flex;border:1px solid #6a6547;background:#342e25;
+  padding:7px 11px;border-radius:99px;color:#f1dba4;font-size:11px;font-weight:750}
+.recommendationSpotlightCampaign{color:#b5d1e8;font-size:11px;overflow-wrap:anywhere;
+  margin:13px 0 0;line-height:1.5}
+.recommendationSpotlightMessage h3{font-size:clamp(17px,2vw,22px);line-height:1.3;
+  letter-spacing:-.4px;margin:11px 0}
+.recommendationSpotlightMessage>p:last-child{font-size:14px;color:#c3d5e8;
+  line-height:1.75;margin:0}
+.recommendationSpotlightEvidence{display:grid;grid-template-columns:1fr;gap:8px;align-content:start}
+.recommendationSpotlightEvidence>div{display:flex;align-items:center;justify-content:space-between;
+  gap:14px;border:1px solid #2e5268;background:#132739;border-radius:10px;padding:13px}
+.recommendationSpotlightEvidence span{font-size:11px;color:#a6c3d9;line-height:1.4}
+.recommendationSpotlightEvidence strong{font-size:17px;color:#e5f8f2;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.recommendationSpotlightCaution{border-top:1px solid #35516a;color:#94adc5;font-size:11px;
+  line-height:1.75;margin:20px 0 0;padding-top:15px}
+
+/* Keep technical detail available via keyboard-accessible native disclosure. */
+.diagnosticsDisclosure{margin-top:22px;border:1px solid #324358;border-radius:15px;
+  background:#111c2c;scroll-margin-top:17px}
+.diagnosticsDisclosure>summary{list-style:none;cursor:pointer;display:flex;
+  justify-content:space-between;align-items:center;gap:20px;padding:23px 25px}
+.diagnosticsDisclosure>summary::-webkit-details-marker{display:none}
+.diagnosticsDisclosure>summary:focus-visible{outline:2px solid #89b6ff;outline-offset:3px}
+.diagnosticsDisclosureHeading{display:flex;flex-direction:column;gap:7px;min-width:0}
+.diagnosticsDisclosureHeading>strong{font-size:18px;letter-spacing:-.4px;color:#d7e5f3}
+.diagnosticsDisclosureHeading>small{font-size:12px;line-height:1.6;color:#8fa9c1;max-width:760px}
+.diagnosticsDisclosureAction{color:#a8ccf3;border:1px solid #365674;background:#1b3147;
+  border-radius:9px;padding:11px 13px;white-space:nowrap;font-size:11px;font-weight:750}
+.diagnosticsDisclosureAction span{display:inline-block;transition:transform .15s;margin-left:4px}
+.diagnosticsDisclosure[open] .diagnosticsDisclosureAction span{transform:rotate(180deg)}
+.diagnosticsDisclosureBody{border-top:1px solid #2e4155;padding:8px 18px 22px}
+.diagnosticsDisclosureBody>section{margin-top:18px}
+.diagnosticsDisclosure .mediaAnalysis,.diagnosticsDisclosure .auditPanel,
+.diagnosticsDisclosure .conversionAuditPanel{scroll-margin-top:18px}
+
+@media(max-width:1100px){
+  .recommendationSpotlightContent{grid-template-columns:1fr}
+  .recommendationSpotlightEvidence{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .recommendationSpotlightEvidence>div{flex-direction:column;align-items:flex-start}
+  .recommendationSpotlightEvidence strong{white-space:normal}
+}
+@media(max-width:700px){
+  .recommendationSpotlight{padding:19px}
+  .recommendationSpotlightLink{width:100%}
+  .recommendationSpotlightEvidence{grid-template-columns:1fr}
+  .recommendationSpotlightEvidence>div{flex-direction:row;align-items:center}
+  .diagnosticsDisclosure>summary{flex-direction:column;align-items:stretch;padding:18px}
+  .diagnosticsDisclosureAction{align-self:flex-start}
+  .diagnosticsDisclosureBody{padding:0 10px 15px}
+  /* Compact business-oriented campaign cards, no horizontal scrollbar. */
+  .campaignPanel .tableScroll{overflow:visible}
+  .campaignPanel .efficiencyTable,.campaignPanel .efficiencyTable tbody{
+    display:block;min-width:0;width:100%}
+  .campaignPanel .efficiencyTable thead{display:none}
+  .campaignPanel .efficiencyTable tbody{display:grid;gap:12px}
+  .campaignPanel .efficiencyTable tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    border:1px solid #30465e;border-radius:10px;background:#152438;padding:12px}
+  .campaignPanel .efficiencyTable td{display:flex;flex-direction:column;gap:6px;
+    border:0;padding:8px;min-width:0;overflow-wrap:anywhere}
+  .campaignPanel .efficiencyTable td:first-child{grid-column:1/-1;border-bottom:1px solid #2e4055;
+    padding-bottom:12px;margin-bottom:3px}
+  .campaignPanel .efficiencyTable td:not(:first-child)::before{content:attr(data-label);
+    text-transform:uppercase;letter-spacing:.4px;font-size:9px;font-weight:700;
+    color:#94abc5}
+  .campaignPanel .efficiencyTable td:nth-child(4),
+  .campaignPanel .efficiencyTable td:nth-child(5),
+  .campaignPanel .efficiencyTable td:nth-child(8){display:none}
+  .campaignPanel .campaignAvatar{width:30px;height:30px}
+  .campaignPanel .campaignDetails strong{max-width:none}
+  .campaignPanel .spendCell{gap:4px}
+  .campaignPanel .tinyTrack{width:min(100%,96px)}
+}
+@media print{
+  @page{size:A4;margin:12mm}
+  html,body{color:#17263a!important;background:#fff!important;font-size:11px!important}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .shell{display:block}
+  .sidebar,.topbar,.filterPanel,.versionChip,.dashboardFooter,
+  .recommendationSpotlightLink,.diagnosticsDisclosure{display:none!important}
+  .content,.dashboardBody{width:100%;max-width:none;margin:0;padding:0}
+  .dashboardHeading{margin:0 0 15px}
+  .dashboardHeading h1{font-size:26px}
+  .dashboardHeading p,.sectionIntro p,.recommendationSpotlightTop p{color:#46556c!important}
+  .sectionIntro{margin:17px 0 10px}
+  .kpiGrid{grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+  .kpiCard{background:#f3f7fc!important;border:1px solid #c7d1dc!important;
+    min-height:95px;padding:12px;break-inside:avoid}
+  .kpiTop,.kpiHint{color:#4b6277!important}
+  .kpiValue,.kpiAccent .kpiValue{font-size:21px;color:#182e47!important}
+  .recommendationSpotlight{background:#f3f8fb!important;border-color:#b6c8d8!important;
+    padding:14px;margin:14px 0;break-inside:avoid}
+  .recommendationSpotlightTop h2,.recommendationSpotlightMessage h3,
+  .recommendationSpotlightMessage p,.recommendationSpotlightCampaign{color:#182e47!important}
+  .recommendationSpotlightChip{color:#4d4731!important;background:#f1ebd6!important}
+  .recommendationSpotlightContent{grid-template-columns:1fr 1fr;gap:12px;margin-top:11px}
+  .recommendationSpotlightEvidence{grid-template-columns:1fr;gap:4px}
+  .recommendationSpotlightEvidence>div{background:#fff!important;border-color:#cbd4dd!important;
+    flex-direction:row;padding:7px}
+  .recommendationSpotlightEvidence span,.recommendationSpotlightCaution{color:#495b70!important}
+  .recommendationSpotlightEvidence strong{color:#17263a!important;font-size:13px}
+  .detailsGrid{grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .miniMetrics,.chartPanel,.campaignPanel,.commercePanel{
+    background:#fff!important;border:1px solid #d6dde6!important;
+    padding:12px;break-inside:avoid}
+  .miniMetricsGrid strong{color:#162b40!important}
+  .campaignPanel{margin-top:14px;break-inside:auto}
+  .campaignPanel .tableScroll{overflow:visible}
+  .campaignPanel .efficiencyTable{display:table;min-width:0;width:100%}
+  .campaignPanel .efficiencyTable thead{display:table-header-group}
+  .campaignPanel .efficiencyTable tbody{display:table-row-group}
+  .campaignPanel .efficiencyTable tr{display:table-row;background:transparent!important;
+    border:0!important;break-inside:avoid}
+  .campaignPanel .efficiencyTable td{display:table-cell;color:#26394f!important;
+    padding:8px 5px;font-size:9px;border-color:#cdd7e1!important}
+  .campaignPanel .efficiencyTable td:first-child{display:table-cell;min-width:0!important;
+    margin:0!important;padding:8px 5px!important}
+  .campaignPanel .efficiencyTable td:not(:first-child)::before{display:none!important}
+  .campaignPanel .efficiencyTable th{color:#46556c!important;padding:8px 5px;font-size:8px}
+  .campaignPanel .efficiencyTable th:nth-child(2),
+  .campaignPanel .efficiencyTable td:nth-child(2),
+  .campaignPanel .efficiencyTable th:nth-child(4),
+  .campaignPanel .efficiencyTable td:nth-child(4),
+  .campaignPanel .efficiencyTable th:nth-child(5),
+  .campaignPanel .efficiencyTable td:nth-child(5),
+  .campaignPanel .efficiencyTable th:nth-child(8),
+  .campaignPanel .efficiencyTable td:nth-child(8){display:none!important}
+  .campaignAvatar,.tinyTrack{display:none!important}
+  .campaignDetails strong,.campaignDetails small,.roasValue{color:#1a2c41!important}
+  .tableFootnote,.microNote,.commerceNote{color:#56697c!important}
+  .commerceKpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+}

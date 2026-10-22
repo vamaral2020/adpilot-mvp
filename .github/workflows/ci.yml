@@ -65,6 +65,16 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/v1/nuvemshop/oauth/callback)" = "503"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:13000/)" = "401"
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:13000/ | grep -q 'Painel de desempenho'
+          # PR 018: render the read-only, historically sourced recommendation in the home dashboard.
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:13000/?since=2026-10-14&until=2026-10-20' \
+            -o /tmp/adpilot-pr018-home.html
+          grep -Fq 'O que fazer agora?' /tmp/adpilot-pr018-home.html
+          grep -Fq 'Recomendações' /tmp/adpilot-pr018-home.html
+          grep -Fq 'Fonte: histórico local' /tmp/adpilot-pr018-home.html
+          grep -Fq 'Diagnósticos e auditorias' /tmp/adpilot-pr018-home.html
+          grep -Fq 'Histórico de campanhas ainda indisponível' /tmp/adpilot-pr018-home.html
+
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 http://127.0.0.1:18080/api/v1/analytics/status | grep -q '"syncEnabled":false'
           # Execute historical SQL including per-campaign LATERAL aggregate against real PostgreSQL.
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \

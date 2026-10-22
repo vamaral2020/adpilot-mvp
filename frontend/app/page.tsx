@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { analyzeMedia, compareSources } from "../lib/performance";
 import {
+  selectSpotlight, spotlightMetric, type RecommendationPreview,
+} from "../lib/recommendation-spotlight";
+import {
   money, number, percentage, multiplier, presetPeriod, readableDate, resolvePeriod, finite,
   type MetaAccount, type CampaignPage, type Campaign, type InsightSummary,
   type InsightMetrics, type Period, type CommerceSummary, type PaymentAudit,
@@ -46,7 +49,7 @@ async function readApi<T>(path: string, timeoutMs = 45_000): Promise<Load<T>> {
 
 const presetUrl = (period: Period) => "/?since=" + period.since + "&until=" + period.until;
 
-function Icon({ name }: { name: "grid" | "activity" | "layers" | "settings" | "arrow" | "chart" }) {
+function Icon({ name }: { name: "grid" | "activity" | "layers" | "settings" | "arrow" | "chart" | "spark" }) {
   const path: Record<typeof name, React.ReactNode> = {
     grid: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
     activity: <><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></>,
@@ -54,6 +57,7 @@ function Icon({ name }: { name: "grid" | "activity" | "layers" | "settings" | "a
     settings: <><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M4.9 4.9 7 7m10 10 2.1 2.1M2 12h3m14 0h3M4.9 19.1 7 17M17 7l2.1-2.1"/></>,
     arrow: <><path d="M4 16.5 10 10l4 4 6-7"/><path d="M15 7h5v5"/></>,
     chart: <><path d="M3 3v18h18"/><path d="m7 15 4-5 4 3 4-7"/></>,
+    spark: <><path d="M12 3l1.9 6.1L20 11l-6.1 1.9L12 19l-1.9-6.1L4 11l6.1-1.9L12 3Z"/><path d="M19 18v4m-2-2h4"/></>,
   };
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
     stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -61,22 +65,22 @@ function Icon({ name }: { name: "grid" | "activity" | "layers" | "settings" | "a
   </svg>;
 }
 
-function Sidebar() {
+function Sidebar({ period }: { period: Period }) {
+  const selectedPeriod = "?since=" + encodeURIComponent(period.since)
+    + "&until=" + encodeURIComponent(period.until);
   return <aside className="sidebar">
     <div className="brand"><span className="brandLogo">A<span className="brandDot">.</span></span><span>AdPilot</span></div>
     <div className="sidebarSection">WORKSPACE</div>
     <nav aria-label="Menu principal" className="sideNav">
       <Link href="/" className="nav active"><Icon name="grid"/> Visão geral</Link>
       <Link href="#campanhas" className="nav"><Icon name="activity"/> Campanhas</Link>
-      <Link href="/historico" className="nav"><Icon name="chart"/> Histórico analítico</Link>
-      <span className="nav disabled" title="Disponível em etapa futura"><Icon name="chart"/> Recomendações IA <span className="coming">Em breve</span></span>
+      <Link href={"/recomendacoes" + selectedPeriod} className="nav"><Icon name="spark"/> Recomendações</Link>
+      <Link href={"/historico" + selectedPeriod} className="nav"><Icon name="chart"/> Histórico analítico</Link>
     </nav>
     <div className="sidebarSection sidebarSectionSecond">GESTÃO</div>
     <nav aria-label="Módulos planejados" className="sideNav">
-      <Link className="nav" href="#analise-investimento"><Icon name="chart"/> Eficiência de mídia</Link>
       <Link className="nav" href="#comercio"><Icon name="layers"/> Desempenho comercial</Link>
-      <Link className="nav" href="#conversoes"><Icon name="activity"/> Eventos Meta</Link>
-      <Link className="nav" href="#auditoria"><Icon name="chart"/> Auditoria de pagamentos</Link>
+      <Link className="nav" href="#diagnosticos"><Icon name="chart"/> Diagnósticos e auditoria</Link>
       <Link className="nav" href="#integracoes"><Icon name="settings"/> Integrações</Link>
     </nav>
     <div className="sidebarFooter">
@@ -94,6 +98,64 @@ function Card({ label, value, hint, accent = false, icon }: {
     <strong className="kpiValue">{value}</strong>
     <span className="kpiHint">{hint}</span>
   </article>;
+}
+
+/**
+ * A cautious summary of the stored historical recommendation preview.
+ * The dashboard KPI cards above come from live Meta Insights; do not mix
+ * or silently overwrite them with these snapshots.
+ */
+function RecommendationSpotlight({ preview, period }: {
+  preview?: RecommendationPreview; period: Period;
+}) {
+  const focus = selectSpotlight(preview);
+  const destination = "/recomendacoes?since=" + encodeURIComponent(period.since)
+    + "&until=" + encodeURIComponent(period.until);
+  const purchases = spotlightMetric(focus,"ATTRIBUTED_PURCHASES");
+  const roas = spotlightMetric(focus,"ROAS");
+  const cpa = spotlightMetric(focus,"CPA");
+  const metricRows = [
+    { label:"Compras atribuídas · histórico",value:number(purchases,2) },
+    { label:"ROAS atribuído · histórico",value:multiplier(roas) },
+    { label:"CPA atribuído · histórico",value:money(cpa,focus.currency ?? "BRL") },
+  ];
+  return <section className="recommendationSpotlight" id="recomendacoes"
+    aria-labelledby="recommendation-spotlight-title">
+    <div className="recommendationSpotlightTop">
+      <div>
+        <div className="smallEyebrow">ORIENTAÇÃO DO ADPILOT · HISTÓRICO LOCAL</div>
+        <h2 id="recommendation-spotlight-title">O que fazer agora?</h2>
+        <p>Uma orientação explicável, baseada no desempenho das campanhas já armazenado.</p>
+      </div>
+      <Link href={destination} className="recommendationSpotlightLink">
+        Ver todas as recomendações <span aria-hidden="true">→</span>
+      </Link>
+    </div>
+    <div className="recommendationSpotlightContent">
+      <div className="recommendationSpotlightMessage">
+        {focus.kind === "advice" && <span className="recommendationSpotlightChip">
+          {focus.confidence === "INSUFFICIENT" ? "Dados limitados" : "Análise preliminar"}
+        </span>}
+        {focus.campaignName && <p className="recommendationSpotlightCampaign">
+          Campanha: {focus.campaignName}</p>}
+        <h3>{focus.title}</h3>
+        <p>{focus.explanation}</p>
+      </div>
+      {focus.kind === "advice" && <div className="recommendationSpotlightEvidence"
+        aria-label="Evidências históricas da recomendação">
+        {metricRows.map(item => <div key={item.label}>
+          <span>{item.label}</span><strong>{item.value}</strong>
+        </div>)}
+      </div>}
+    </div>
+    <p className="recommendationSpotlightCaution">
+      Fonte: histórico local de Insights da Meta Ads. A cobertura ainda
+      {focus.coverageVerified ? " foi verificada." : " não foi verificada."}
+      {" "}Estes dados podem diferir da consulta atual acima e não identificam pedidos
+      individuais da Nuvemshop. Nenhuma recomendação altera automaticamente anúncios.
+      {focus.syncUnconfirmed && " A última sincronização da Meta não está confirmada."}
+    </p>
+  </section>;
 }
 
 function PeriodFilter({ period }: { period: Period }) {
@@ -176,20 +238,20 @@ function CampaignTable({ summary, listing, currency }: {
         const calculated = analyzedById.get(id);
         const spend = finite(metrics?.spend);
         return <tr key={id}>
-          <td><div className="campaignCell"><span className="campaignAvatar"><Icon name="activity"/></span>
+          <td data-label="Campanha"><div className="campaignCell"><span className="campaignAvatar"><Icon name="activity"/></span>
             <span className="campaignDetails"><strong>{c?.name ?? insight?.campaignName ?? id}</strong>
               <small>ID {id}</small></span></div></td>
-          <td><CampaignStatus campaign={c}/></td>
-          <td><div className="spendCell"><strong>{money(spend, currency)}</strong>
+          <td data-label="Status"><CampaignStatus campaign={c}/></td>
+          <td data-label="Investimento"><div className="spendCell"><strong>{money(spend, currency)}</strong>
             <div className="tinyTrack"><span style={{width: highest && spend !== null
               ? (spend / highest * 100) + "%" : "0%"}}/></div>
           </div></td>
-          <td>{calculated ? percentage(calculated.spendShare) : "—"}</td>
-          <td>{metrics ? number(metrics.clicks) : "—"}</td>
-          <td>{metrics ? number(metrics.purchases, 2) : "—"}</td>
-          <td>{metrics ? money(metrics.purchaseValue, currency) : "—"}</td>
-          <td>{calculated ? money(calculated.costPerAttributedPurchase, currency) : "—"}</td>
-          <td><span className="roasValue">{metrics ? multiplier(metrics.roas) : "—"}</span></td>
+          <td data-label="% do gasto">{calculated ? percentage(calculated.spendShare) : "—"}</td>
+          <td data-label="Cliques">{metrics ? number(metrics.clicks) : "—"}</td>
+          <td data-label="Compras Meta">{metrics ? number(metrics.purchases, 2) : "—"}</td>
+          <td data-label="Receita atribuída">{metrics ? money(metrics.purchaseValue, currency) : "—"}</td>
+          <td data-label="Custo por compra">{calculated ? money(calculated.costPerAttributedPurchase, currency) : "—"}</td>
+          <td data-label="ROAS Meta"><span className="roasValue">{metrics ? multiplier(metrics.roas) : "—"}</span></td>
         </tr>;
       })}</tbody>
     </table></div> :
@@ -532,7 +594,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
   const period = resolvePeriod(since, until);
 
   const query = new URLSearchParams({ since: period.since, until: period.until });
-  const [account, listing, summary, shop, commerce, audit, conversionAudit] = await Promise.all([
+  const [account, listing, summary, shop, commerce, audit, conversionAudit, recommendations] = await Promise.all([
     readApi<MetaAccount>("/api/v1/meta/account"),
     readApi<CampaignPage>("/api/v1/meta/campaigns?limit=100"),
     period.error ? Promise.resolve({ error: period.error } as Load<InsightSummary>) :
@@ -543,6 +605,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
     readApi<PaymentAudit>("/api/v1/nuvemshop/payments/audit"),
     period.error ? Promise.resolve({ error: period.error } as Load<MetaPurchaseAudit>) :
       readApi<MetaPurchaseAudit>("/api/v1/meta/conversions/audit?" + query.toString()),
+    period.error ? Promise.resolve({ error: period.error } as Load<RecommendationPreview>) :
+      readApi<RecommendationPreview>("/api/v1/analytics/recommendations?" + query.toString(), 15_000),
   ]);
   const data = summary.data;
   const currency = account.data?.currency ?? "BRL";
@@ -551,7 +615,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
   const metrics = data?.totals;
 
   return <main className="shell">
-    <Sidebar/>
+    <Sidebar period={period}/>
     <div className="content">
       <div className="topbar">
         <div className="breadcrumb">Workspace pessoal <span>/</span> <strong>Visão geral</strong></div>
@@ -594,6 +658,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
             hint="Não são pedidos pagos conciliados" icon={<span>◎</span>}/>
         </div>
 
+        <RecommendationSpotlight preview={recommendations.data} period={period}/>
+
         <div className="detailsGrid">
           <section className="miniMetrics" aria-labelledby="traffic-heading">
             <div className="panelHeader">
@@ -618,14 +684,26 @@ export default async function Home({ searchParams }: { searchParams: Promise<Par
           <h2>Campanhas</h2><p>Não foi possível carregar os indicadores do período</p></div></div>
           <div className="emptyPanel">Corrija a integração ou o filtro de datas para consultar as campanhas.</div></section>}
 
-        <MediaAnalysisPanel meta={data} store={commerce.data} currency={account.data?.currency}/>
-
-        <MetaPurchaseDiagnosticPanel audit={conversionAudit.data} meta={data}
-          currency={account.data?.currency} error={conversionAudit.error}/>
-
         <CommercePanel summary={commerce.data} error={commerce.error} currency={currency}/>
-        {shop.data?.status === "CONNECTED" &&
-          <PaymentAuditPanel audit={audit.data} commerce={commerce.data} error={audit.error}/>}
+
+        <details className="diagnosticsDisclosure" id="diagnosticos">
+          <summary>
+            <span className="diagnosticsDisclosureHeading">
+              <span className="smallEyebrow">SUPORTE E QUALIDADE DOS DADOS</span>
+              <strong>Diagnósticos e auditorias</strong>
+              <small>Eventos de compra, eficiência comparada e conferência de pagamentos.
+                Expanda quando precisar investigar os dados técnicos.</small>
+            </span>
+            <span className="diagnosticsDisclosureAction">Ver detalhes <span aria-hidden="true">⌄</span></span>
+          </summary>
+          <div className="diagnosticsDisclosureBody">
+            <MediaAnalysisPanel meta={data} store={commerce.data} currency={account.data?.currency}/>
+            <MetaPurchaseDiagnosticPanel audit={conversionAudit.data} meta={data}
+              currency={account.data?.currency} error={conversionAudit.error}/>
+            {shop.data?.status === "CONNECTED" &&
+              <PaymentAuditPanel audit={audit.data} commerce={commerce.data} error={audit.error}/>}
+          </div>
+        </details>
 
         <section className="shopPanel" id="integracoes" aria-labelledby="shop-heading">
           <div className="shopHeader">
