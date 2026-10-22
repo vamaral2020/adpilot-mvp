@@ -71,7 +71,7 @@ jobs:
             -o /tmp/adpilot-pr018-home.html
           grep -Fq 'O que fazer agora?' /tmp/adpilot-pr018-home.html
           grep -Fq 'Recomendações' /tmp/adpilot-pr018-home.html
-          grep -Fq 'Histórico local' /tmp/adpilot-pr018-home.html
+          grep -Fq 'Fonte: histórico local' /tmp/adpilot-pr018-home.html
           grep -Fq 'Diagnósticos e auditorias' /tmp/adpilot-pr018-home.html
           grep -Fq 'Histórico de campanhas ainda indisponível' /tmp/adpilot-pr018-home.html
 
