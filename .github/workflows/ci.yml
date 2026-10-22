@@ -150,6 +150,32 @@ jobs:
             -o /tmp/adpilot-pr020-history-ui.html
           grep -Fq 'O quanto do período foi consultado?' /tmp/adpilot-pr020-history-ui.html
           grep -Fq 'Dias sem consulta comprovada' /tmp/adpilot-pr020-history-ui.html
+          # PR 017: preview is read-only and never pretends an empty period has zero purchases.
+          test "$(curl -s -o /dev/null -w '%{http_code}' \
+            'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20')" = "401"
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20' \
+            | grep -q '"NO_META_INSIGHTS"'
+          # A canonical decimal target must reach the Java API as a real goal.
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20&targetRoas=3.4&targetCpa=75' \
+            | grep -q '"targetRoas":3.4'
+
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            'SELECT count(*) FROM analytics_recommendation_evaluation')" = "0"
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            -H 'Content-Type: application/json' \
+            --data '{"since":"2026-10-14","until":"2026-10-20","targetRoas":3,"targetCpa":50}' \
+            'http://127.0.0.1:18080/api/v1/analytics/recommendations/evaluations' \
+            | grep -q '"evaluationId"'
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            'SELECT count(*) FROM analytics_recommendation_evaluation')" = "1"
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            'SELECT count(*) FROM analytics_recommendation')" = "1"
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='analytics_recommendation_evaluation'")" = "1"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -u admin:ci-local-admin-password-123 -X POST http://127.0.0.1:18080/api/v1/analytics/sync)" = "409"
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('analytics_sync_state','analytics_sync_run','analytics_order_snapshot','analytics_meta_insight_daily','analytics_audience_definition','analytics_recommendation','analytics_recommendation_evidence','analytics_meta_campaign_snapshot')")" = "8"
           # PR 021: a real PostgreSQL snapshot without full V5 receipts
           # must never generate ROAS/CPA investigative recommendations.
           docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U adpilot -d adpilot <<'SQL'
@@ -179,32 +205,7 @@ jobs:
           grep -Fq 'Dias consultados' /tmp/adpilot-pr021-rec.html
 
 
-          # PR 017: preview is read-only and never pretends an empty period has zero purchases.
-          test "$(curl -s -o /dev/null -w '%{http_code}' \
-            'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20')" = "401"
-          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
-            'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20' \
-            | grep -q '"NO_META_INSIGHTS"'
-          # A canonical decimal target must reach the Java API as a real goal.
-          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
-            'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20&targetRoas=3.4&targetCpa=75' \
-            | grep -q '"targetRoas":3.4'
 
-          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
-            'SELECT count(*) FROM analytics_recommendation_evaluation')" = "0"
-          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
-            -H 'Content-Type: application/json' \
-            --data '{"since":"2026-10-14","until":"2026-10-20","targetRoas":3,"targetCpa":50}' \
-            'http://127.0.0.1:18080/api/v1/analytics/recommendations/evaluations' \
-            | grep -q '"evaluationId"'
-          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
-            'SELECT count(*) FROM analytics_recommendation_evaluation')" = "1"
-          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
-            'SELECT count(*) FROM analytics_recommendation')" = "1"
-          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
-            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='analytics_recommendation_evaluation'")" = "1"
-          test "$(curl -s -o /dev/null -w '%{http_code}' -u admin:ci-local-admin-password-123 -X POST http://127.0.0.1:18080/api/v1/analytics/sync)" = "409"
-          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('analytics_sync_state','analytics_sync_run','analytics_order_snapshot','analytics_meta_insight_daily','analytics_audience_definition','analytics_recommendation','analytics_recommendation_evidence','analytics_meta_campaign_snapshot')")" = "8"
       - name: Collect Docker diagnostics on failure
         if: failure()
         run: docker compose ps && docker compose logs --tail=120
