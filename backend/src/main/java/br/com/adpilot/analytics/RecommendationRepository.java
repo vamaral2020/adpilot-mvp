@@ -82,6 +82,9 @@ public class RecommendationRepository {
                 """, evaluationId, AnalyticsSyncStore.WORKSPACE, report.since(), report.until(),
                 report.targetRoas(), report.targetCpa(), report.coverageVerified(),
                 Timestamp.from(report.generatedAt()));
+        var linked=new java.util.HashMap<String,java.util.UUID>();
+        for(var goal:report.linkedGoals())
+            linked.put(goal.accountId()+":"+goal.campaignId(),goal.goalId());
         for (Advice advice : report.recommendations()) {
             UUID id = UUID.randomUUID();
             jdbc.update("""
@@ -89,13 +92,15 @@ public class RecommendationRepository {
                     (id,workspace_id,recommendation_type,justification,confidence,status,
                      source_period_start,source_period_end,created_at,evaluation_id,
                      account_id,campaign_id,campaign_name,currency,rule_version,
-                     action_code,priority)
-                    VALUES (?,?,?,?,?,'DRAFT',?,?,?,?,?,?,?,?,?,?,?)
+                     action_code,priority,product_goal_id)
+                    VALUES (?,?,?,?,?,'DRAFT',?,?,?,?,?,?,?,?,?,?,?,?)
                     """, id, AnalyticsSyncStore.WORKSPACE, advice.ruleCode(),
                     advice.justification(), advice.confidence(), report.since(), report.until(),
                     Timestamp.from(report.generatedAt()), evaluationId, advice.accountId(),
                     advice.campaignId(), advice.campaignName(), advice.currency(),
-                    advice.ruleVersion(), advice.actionCode(), advice.priority());
+                    advice.ruleVersion(), advice.actionCode(), advice.priority(),
+                    advice.accountId()==null || advice.campaignId()==null ? null :
+                        linked.get(advice.accountId()+":"+advice.campaignId()));
             for (var metric : advice.evidence()) {
                 jdbc.update("""
                         INSERT INTO analytics_recommendation_evidence
