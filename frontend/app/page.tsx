@@ -49,7 +49,7 @@ async function readApi<T>(path: string, timeoutMs = 45_000): Promise<Load<T>> {
 
 const presetUrl = (period: Period) => "/?since=" + period.since + "&until=" + period.until;
 
-function Icon({ name }: { name: "grid" | "activity" | "layers" | "settings" | "arrow" | "chart" | "spark" }) {
+function Icon({ name }: { name: "grid" | "activity" | "layers" | "settings" | "arrow" | "chart" | "spark" | "calculator" }) {
   const path: Record<typeof name, React.ReactNode> = {
     grid: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
     activity: <><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></>,
@@ -58,6 +58,7 @@ function Icon({ name }: { name: "grid" | "activity" | "layers" | "settings" | "a
     arrow: <><path d="M4 16.5 10 10l4 4 6-7"/><path d="M15 7h5v5"/></>,
     chart: <><path d="M3 3v18h18"/><path d="m7 15 4-5 4 3 4-7"/></>,
     spark: <><path d="M12 3l1.9 6.1L20 11l-6.1 1.9L12 19l-1.9-6.1L4 11l6.1-1.9L12 3Z"/><path d="M19 18v4m-2-2h4"/></>,
+    calculator: <><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8v3H8zM8 13h2m4 0h2M8 17h2m4 0h2"/></>,
   };
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
     stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -74,6 +75,7 @@ function Sidebar({ period }: { period: Period }) {
     <nav aria-label="Menu principal" className="sideNav">
       <Link href="/" className="nav active"><Icon name="grid"/> Visão geral</Link>
       <Link href="#campanhas" className="nav"><Icon name="activity"/> Campanhas</Link>
+      <Link href="/calculadora" className="nav"><Icon name="calculator"/> Planejar campanha</Link>
       <Link href={"/recomendacoes" + selectedPeriod} className="nav"><Icon name="spark"/> Recomendações</Link>
       <Link href={"/historico" + selectedPeriod} className="nav"><Icon name="chart"/> Histórico analítico</Link>
     </nav>
