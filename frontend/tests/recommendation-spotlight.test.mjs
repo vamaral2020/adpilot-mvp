@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { selectSpotlight, spotlightMetric } from "../lib/recommendation-spotlight.ts";
+import { selectSpotlight, spotlightMetric, recommendationQualitySummary } from "../lib/recommendation-spotlight.ts";
 
 const makeAdvice = (ruleCode, priority, values = {}) => ({
   ruleCode, priority, confidence: "INSUFFICIENT", campaignId: "52596120828588",
@@ -73,4 +73,48 @@ test("a report with no issues and no campaigns points to goal configuration", ()
   const focus = selectSpotlight(report([{...makeAdvice("CONFIGURE_GOALS","LOW"),campaignId:null}]));
   assert.equal(focus.kind, "no-data");
   assert.match(focus.title, /Configure/);
+});
+
+
+test("data-quality warning outranks ordinary LOW_SAMPLE and reports missing dates", () => {
+  const quality={status:"PARTIAL_WINDOWS",requestedDays:8,collectedDays:3,
+    daysWithRows:5,daysWithoutRows:0,uncollectedDates:["2026-10-14"],
+    collectedWithoutRows:[],lastWindowSuccess:"2026-10-22T21:15:20Z",
+    syncFresh:true,analysisEligible:false};
+  const focus=selectSpotlight(report([
+    makeAdvice("LOW_SAMPLE","LOW"),
+    makeAdvice("DATA_QUALITY_LIMITED","MEDIUM",{
+      title:"Verificar qualidade dos dados antes de decidir",
+      justification:"Faltam comprovantes de coleta para os dias informados.",
+    }),
+  ],{quality}));
+  assert.equal(focus.ruleCode,"DATA_QUALITY_LIMITED");
+  assert.equal(focus.collectedDays,3);
+  assert.equal(focus.requestedDays,8);
+  assert.equal(focus.qualityStatus,"PARTIAL_WINDOWS");
+  assert.match(focus.qualitySummary,/apenas parte/);
+  assert.equal(focus.coverageVerified,false);
+});
+
+test("fresh Meta receipts do not certify financial completeness", () => {
+  const quality={status:"WINDOWS_OBSERVED",requestedDays:8,collectedDays:8,
+    daysWithRows:6,daysWithoutRows:2,uncollectedDates:[],
+    collectedWithoutRows:["2026-10-14","2026-10-15"],
+    lastWindowSuccess:"2026-10-22T21:15:20Z",syncFresh:true,analysisEligible:true};
+  const focus=selectSpotlight(report([makeAdvice("LOW_SAMPLE","LOW")],{quality}));
+  assert.equal(focus.ruleCode,"LOW_SAMPLE");
+  assert.equal(focus.syncUnconfirmed,false);
+  assert.equal(focus.coverageVerified,false);
+  assert.match(recommendationQualitySummary(quality),/atribuição financeira continua preliminar/);
+});
+
+test("stale sync changes presentation but does not invent Meta sales", () => {
+  const quality={status:"WINDOWS_OBSERVED",requestedDays:8,collectedDays:8,
+    daysWithRows:6,daysWithoutRows:2,uncollectedDates:[],
+    collectedWithoutRows:["2026-10-14","2026-10-15"],
+    lastWindowSuccess:"2026-10-20T21:15:20Z",syncFresh:false,analysisEligible:false};
+  const focus=selectSpotlight(report([makeAdvice("DATA_QUALITY_LIMITED","MEDIUM")],{quality}));
+  assert.equal(focus.syncUnconfirmed,true);
+  assert.match(focus.qualitySummary,/atualizar a sincronização/);
+  assert.equal(spotlightMetric(focus,"ATTRIBUTED_PURCHASES"),3);
 });
