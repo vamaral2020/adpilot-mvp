@@ -276,6 +276,13 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' -u admin:ci-local-admin-password-123 \
             -H 'Content-Type: application/json' --data-binary @/tmp/adpilot-pr022-plan.json \
             'http://127.0.0.1:13000/api/planning/goals')" = "403"
+          # A same-origin explicit manual link through Next must reach the local backend.
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            -X PUT -H 'Origin: http://127.0.0.1:13000' \
+            -H 'Content-Type: application/json' \
+            -d "{\"goalId\":\"$PLAN_ID\",\"singleProductConfirmed\":true}" \
+            'http://127.0.0.1:13000/api/planning/campaigns/123456/52596120828588/goal' \
+            | jq -e '.status=="LINKED"'
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
             'http://127.0.0.1:13000/api/planning/catalog' \
             | jq -e '(.goals|length)==1 and (.campaigns|length)==1'
