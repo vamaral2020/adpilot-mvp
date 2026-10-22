@@ -789,8 +789,9 @@ Rota autenticada do frontend: **`http://localhost:13000/calculadora`**, acessív
 ### Entradas e premissas
 
 - Cálculo **por pedido com uma unidade do produto**. O preço de R$ 199 é exemplo preenchido; substitua pelos valores da campanha planejada.
-- Obrigatórias: preço bruto de venda (maior que zero), custo da mercadoria e resultado desejado após publicidade (ambos podem ser zero, se digitados explicitamente).
-- Opcionais e agrupadas para manter o MVP simples: imposto sobre venda (%), tarifa de pagamento (% e R$ fixo), frete subsidiado, embalagem e outros custos variáveis. Campo opcional em branco = 0, exibido explicitamente na interface.
+- **Todos os campos são obrigatórios**: preço bruto de venda (maior que zero), custo da mercadoria, impostos (%), taxas de pagamento (% e tarifa fixa), frete subsidiado, embalagem, outros custos variáveis e valor mínimo que deseja preservar após anúncios. Insira **0** explicitamente quando uma despesa não existir ou não desejar preservar resultado depois da publicidade; campo vazio **não equivale** a zero.
+- Resultado da venda antes da publicidade é **calculado automaticamente** como preço menos todos os custos variáveis declarados. É exibido assim que os campos de custos estiverem completos, mesmo que o valor a preservar depois dos anúncios ainda não tenha sido informado.
+- O valor que deseja preservar **após anúncios** permanece um objetivo separado da margem calculada, porque reservar 100% da margem não deixa orçamento positivo para aquisição.
 - Aceita `199,90` e `199.90`, **sem separador de milhar**, no máximo duas casas decimais. Valores não negativos, cada moeda até R$ 1 milhão e percentuais de 0% a 100%. Valor inválido não é silenciosamente convertido em zero.
 - Taxas percentuais calculadas sobre o **preço bruto**, arredondadas individualmente a centavos; os resultados monetários são calculados em **centavos inteiros**, sem somas monetárias em ponto flutuante.
 
@@ -810,3 +811,28 @@ A calculadora apresenta CPA-alvo e ROAS-alvo para **referência comercial e cóp
 ### Escopo técnico
 
 Somente frontend Next.js/React: `lib/product-targets.ts` contém funções puras; `app/calculadora` implementa a interface interativa; `tests/product-targets.test.mjs` cobre entradas brasileiras, precisão, limites, arredondamento e margens inviáveis. Não há migration, alteração no backend Java, OAuth, permissão de Meta/Nuvemshop nem alteração do motor de recomendações.
+
+
+### PR 019.1 — Margem automática e custos obrigatórios
+
+Para evitar metas superestimadas, a calculadora agora **não interpreta campos de
+despesa em branco como zero**. Preço, custo da mercadoria, imposto, taxa percentual
+e tarifa fixa de pagamento, frete subsidiado, embalagem, outros custos e resultado
+mínimo a preservar após anúncios são obrigatórios. **Informe 0 explicitamente**
+em cada despesa que não existir; o preço de venda precisa ser positivo.
+
+**Resultado antes dos anúncios** = preço de venda − soma dos custos variáveis,
+incluindo percentuais convertidos em valores monetários e arredondados por venda.
+O resultado automático aparece independentemente de já ter sido informado o
+valor a preservar após anúncios. A calculadora só mostra metas finais de CPA e
+ROAS quando **todos** os campos estão preenchidos e validados.
+
+O **resultado mínimo a preservar depois dos anúncios** é um objetivo econômico
+editável e separado: CPA-alvo = resultado antes dos anúncios − valor a preservar;
+ROAS-alvo = preço ÷ CPA-alvo (arredondado para cima). Não é correto preencher
+automaticamente o objetivo pós-anúncio com toda a margem, pois isso resultaria
+em CPA zero e ROAS indefinido. Se quiser apenas conhecer o ponto de equilíbrio,
+informe **0** no campo de reserva e compare com CPA/ROAS de equilíbrio.
+
+Os custos continuam apenas na memória da interface; nenhuma persistência,
+migration ou chamada à Meta/Nuvemshop foi adicionada.
