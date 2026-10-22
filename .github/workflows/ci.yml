@@ -90,6 +90,7 @@ jobs:
           grep -Fq 'Preencha' /tmp/adpilot-pr019-calculator.html
           grep -Fq 'Todos obrigatórios' /tmp/adpilot-pr019-calculator.html
           grep -Fq 'Resultado da venda antes dos anúncios' /tmp/adpilot-pr019-calculator.html
+          grep -Fq 'Restaurar valores iniciais' /tmp/adpilot-pr019-calculator.html
 
           grep -Fq 'Planejar campanha' /tmp/adpilot-pr018-home.html
 
@@ -99,6 +100,57 @@ jobs:
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
             'http://127.0.0.1:18080/api/v1/analytics/history?since=2026-10-01&until=2026-10-20' \
             | grep -q '"campaigns":\[\]'
+          # PR 020: V5 does not retroactively invent collection coverage.
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:18080/api/v1/analytics/history?since=2026-10-14&until=2026-10-20' \
+            -o /tmp/adpilot-pr020-history-before.json
+          jq -e '.complete==false and .coverage.meta.status=="NO_COLLECTION_RECEIPT"
+            and .coverage.meta.observedDays==0 and (.coverage.meta.unobservedDates|length)==7
+            and .coverage.store.status=="UPDATED_AT_ONLY_NOT_PAID_DATE"' \
+            /tmp/adpilot-pr020-history-before.json
+          # Isolated CI fixture: one successful 3-day Meta API window, one failed window.
+          # Only the successful receipt must count; empty rows are NOT assumed to be zero sales.
+          docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U adpilot -d adpilot <<'SQL'
+          WITH ok_run AS (
+            INSERT INTO analytics_sync_run
+              (workspace_id,provider,resource,status,finished_at)
+            VALUES ('00000000-0000-4000-8000-000000000001',
+              'META_ADS','INSIGHTS_DAILY','SUCCEEDED',now())
+            RETURNING id
+          )
+          INSERT INTO analytics_sync_window
+            (run_id,workspace_id,provider,resource,account_id,meta_from,meta_through)
+          SELECT id,'00000000-0000-4000-8000-000000000001',
+            'META_ADS','INSIGHTS_DAILY','123456','2026-10-14','2026-10-16'
+          FROM ok_run;
+          WITH bad_run AS (
+            INSERT INTO analytics_sync_run
+              (workspace_id,provider,resource,status,finished_at,error_code)
+            VALUES ('00000000-0000-4000-8000-000000000001',
+              'META_ADS','INSIGHTS_DAILY','FAILED',now(),'CI_FAKE_ERROR')
+            RETURNING id
+          )
+          INSERT INTO analytics_sync_window
+            (run_id,workspace_id,provider,resource,account_id,meta_from,meta_through)
+          SELECT id,'00000000-0000-4000-8000-000000000001',
+            'META_ADS','INSIGHTS_DAILY','123456','2026-10-17','2026-10-20'
+          FROM bad_run;
+          SQL
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:18080/api/v1/analytics/history?since=2026-10-14&until=2026-10-20' \
+            -o /tmp/adpilot-pr020-history-after.json
+          jq -e '.complete==false and .coverage.meta.status=="PARTIAL_WINDOWS"
+            and .coverage.meta.observedDays==3 and .coverage.meta.datesWithoutRows==3
+            and (.coverage.meta.unobservedDates|length)==4
+            and (.coverage.meta.observedWithoutRows|length)==3
+            and (.warnings|index("META_FETCHED_DAYS_WITHOUT_REPORTED_ROWS")!=null)' \
+            /tmp/adpilot-pr020-history-after.json
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:13000/historico?since=2026-10-14&until=2026-10-20' \
+            -o /tmp/adpilot-pr020-history-ui.html
+          grep -Fq 'O quanto do período foi consultado?' /tmp/adpilot-pr020-history-ui.html
+          grep -Fq 'Dias sem consulta comprovada' /tmp/adpilot-pr020-history-ui.html
+
           # PR 017: preview is read-only and never pretends an empty period has zero purchases.
           test "$(curl -s -o /dev/null -w '%{http_code}' \
             'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20')" = "401"
