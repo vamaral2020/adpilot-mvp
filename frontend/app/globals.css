@@ -248,3 +248,10 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
 
 .historyRecommendationsLink{display:inline-flex;align-items:center;border-radius:9px;padding:12px 15px;background:#254d75;border:1px solid #4077ab;color:#d5eaff;font-weight:700;font-size:12px;white-space:nowrap}
 .historyRecommendationsLink:hover{background:#32618b}
+
+/* PR 017.1: show the goals the server actually evaluated, not merely edited inputs. */
+.recommendationsAppliedGoals{display:flex;flex-wrap:wrap;align-items:center;gap:5px 8px;
+  margin:15px 0 0;padding:12px 16px;border:1px solid #34516f;border-radius:10px;
+  background:#14283b;color:#c4d9ee;font-size:12px;line-height:1.7}
+.recommendationsAppliedGoals strong{color:#e5f0fa}
+.recommendationsAppliedGoals span{display:block;flex-basis:100%;color:#8fa9c3}

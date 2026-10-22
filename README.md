@@ -753,3 +753,11 @@ Exemplo de gravação local deliberada:
 ```bash
 curl -sS -u admin -H 'Content-Type: application/json' --data '{"since":"2026-10-14","until":"2026-10-20","targetRoas":3,"targetCpa":50}' 'http://localhost:18080/api/v1/analytics/recommendations/evaluations' | jq
 ```
+
+### PR 017.1 — Correção de metas decimais no formulário
+
+Os campos ROAS mínimo e CPA máximo na página de recomendações aceitam vírgula ou ponto como separador decimal, sem separador de milhar (exemplos: `3,4`, `3.4`, `75,50`). O frontend valida até quatro casas decimais, exige valor positivo e respeita os tetos vigentes do backend. Antes de consultar a API, converte `3,4` em `3.4` para manter a precisão sem permitir interpretações ambíguas.
+
+Corrigido o conflito anterior entre `min=0.0001` e `step=0.01`, que bloqueava valores como `3,4`. Entradas inválidas exibem erro claro em vez de apagar silenciosamente a meta e retornar `CONFIGURE_GOALS`. A interface mostra as metas efetivamente usadas no último resultado e informa que alterações requerem clicar em **Analisar campanhas**.
+
+A explicação da regra `LOW_SAMPLE` agora exibe quantidades sem zeros decimais desnecessários e usa singular/plural em português, preservando atribuições fracionárias da Meta quando ocorrerem. O motor e suas limitações de cobertura, a API e a persistência permanecem inalterados. Adicionados testes unitários e smoke de API.

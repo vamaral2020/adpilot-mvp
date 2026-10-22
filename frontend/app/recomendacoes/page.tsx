@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { money, number, resolvePeriod } from "../../lib/dashboard";
+import { parseOptionalGoal } from "../../lib/recommendation-goals";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +70,14 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
     typeof raw.until==="string"?raw.until:undefined);
   const targetRoas=typeof raw.targetRoas==="string"?raw.targetRoas:"";
   const targetCpa=typeof raw.targetCpa==="string"?raw.targetCpa:"";
-  const result=period.error?{error:period.error}:await load(period.since,period.until,targetRoas,targetCpa);
+  // Normalize pt-BR comma decimals before forwarding to BigDecimal request params.
+  // Invalid input is displayed, never silently omitted as "no business goals".
+  const roasGoal=parseOptionalGoal(targetRoas,"ROAS mínimo",100);
+  const cpaGoal=parseOptionalGoal(targetCpa,"CPA máximo",1000000);
+  const validationError=roasGoal.error ?? cpaGoal.error;
+  const result=period.error?{error:period.error}:validationError
+    ? {error:validationError}
+    : await load(period.since,period.until,roasGoal.value??"",cpaGoal.value??"");
   const report=result.data;
   const campaignCount=new Set(report?.recommendations.filter(x=>x.campaignId).map(x=>
     x.accountId+":"+x.campaignId) ?? []).size;
@@ -89,18 +97,29 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
         <label>De <input type="date" name="since" required defaultValue={period.since}/></label>
         <label>Até <input type="date" name="until" required defaultValue={period.until}/></label>
         <label>ROAS mínimo desejado
-          <input type="number" name="targetRoas" min="0.0001" max="100" step="0.01"
-            placeholder="Ex.: 3" defaultValue={targetRoas} />
+          <input type="text" inputMode="decimal" name="targetRoas"
+            pattern="[0-9]+([.,][0-9]{1,4})?" maxLength={20}
+            title="Informe um número positivo, como 3,4 ou 3.4 (até 4 casas decimais)."
+            placeholder="Ex.: 3,4" defaultValue={targetRoas} />
         </label>
         <label>CPA máximo (R$)
-          <input type="number" name="targetCpa" min="0.0001" max="1000000" step="0.01"
-            placeholder="Ex.: 50" defaultValue={targetCpa}/>
+          <input type="text" inputMode="decimal" name="targetCpa"
+            pattern="[0-9]+([.,][0-9]{1,4})?" maxLength={20}
+            title="Informe um valor positivo, como 75 ou 75,50 (até 4 casas decimais)."
+            placeholder="Ex.: 75,00" defaultValue={targetCpa}/>
         </label>
         <button type="submit">Analisar campanhas</button>
       </form>
     </div>
     {result.error && <div className="alertBanner error" role="alert">{result.error}</div>}
     {report && <>
+      <p className="recommendationsAppliedGoals">
+        <strong>Metas usadas nesta análise:</strong>{" "}
+        {report.targetRoas !== null ? "ROAS mínimo " + number(report.targetRoas,2) + "x" : "ROAS não informado"}
+        {" · "}
+        {report.targetCpa !== null ? "CPA máximo " + money(report.targetCpa,"BRL") : "CPA não informado"}
+        <span>Alterou algum valor acima? Clique em “Analisar campanhas” para atualizar as orientações.</span>
+      </p>
       <section className="recommendationsSummary" aria-label="Resumo da análise">
         <div><small>Campanhas com evidências</small><strong>{campaignCount}</strong></div>
         <div><small>Orientações geradas</small><strong>{report.recommendations.length}</strong></div>

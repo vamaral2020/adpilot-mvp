@@ -133,10 +133,12 @@ public class RecommendationRuleEngine {
         if (!enough) {
             out.add(advice("LOW_SAMPLE",account,campaign,name,currency,"LOW",
                     "INSUFFICIENT","MONITOR_ONLY","Acompanhar antes de alterar orçamento",
-                    "Foram registradas " + purchases.toPlainString() + " compra(s) "
-                    + "atribuídas em " + dates.size() + " dia(s) com registros. "
-                    + "A amostra ou o período é insuficiente para orientar aumento, redução "
-                    + "ou pausa de orçamento. ROAS e CPA podem oscilar.",
+                    "A Meta atribuiu " + readablePurchases(purchases) + " "
+                    + (purchases.compareTo(BigDecimal.ONE) == 0 ? "compra" : "compras")
+                    + " à campanha. Há registros de " + dates.size() + " "
+                    + (dates.size() == 1 ? "dia" : "dias") + " no período selecionado. "
+                    + "A amostra ainda é insuficiente para recomendar mudanças "
+                    + "no orçamento. O ROAS e o CPA podem oscilar.",
                     append(evidence,metric("ROAS",roas),metric("CPA",cpa)),
                     List.of("HISTORICAL_COVERAGE_NOT_VERIFIED","SMALL_OR_SHORT_SAMPLE")));
         }
@@ -265,6 +267,11 @@ public class RecommendationRuleEngine {
             spend=spend.add(row.spend());
         }
         return new Half(rows.size(),impressions,clicks,spend);
+    }
+
+    /** Keep fractional Meta attribution while removing meaningless scale zeros. */
+    private static String readablePurchases(BigDecimal purchases) {
+        return purchases.stripTrailingZeros().toPlainString().replace('.', ',');
     }
 
     private static BigDecimal ratio(BigDecimal numerator,BigDecimal denominator) {

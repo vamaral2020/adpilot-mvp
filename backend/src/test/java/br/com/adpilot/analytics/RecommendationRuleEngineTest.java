@@ -42,9 +42,23 @@ class RecommendationRuleEngineTest {
         assertTrue(report.recommendations().stream().noneMatch(r ->
                 r.actionCode().contains("SCALE") || r.actionCode().contains("PAUSE")));
         assertTrue(report.warnings().contains("META_ATTRIBUTION_CAN_CHANGE"));
+        var explanation=report.recommendations().getFirst().justification();
+        assertTrue(explanation.contains("3 compras"),explanation);
+        assertTrue(explanation.contains("5 dias"),explanation);
+        assertFalse(explanation.contains("3.0000"),explanation);
+        assertFalse(explanation.contains("compra(s)"),explanation);
         assertEquals(0,report.recommendations().getFirst().evidence().stream()
                 .filter(v->v.name().equals("ATTRIBUTED_PURCHASES")).findFirst()
                 .orElseThrow().value().compareTo(bd("3")));
+    }
+
+    @Test void fractionalMetaAttributionIsPresentedWithoutFakeIntegerRounding() {
+        var req=new Request(START,START.plusDays(6),bd("3"),bd("50"));
+        var report=run(req,List.of(row(0,"20","1.5000","100",100,10)));
+        var explanation=report.recommendations().getFirst().justification();
+        assertTrue(explanation.contains("1,5 compras"),explanation);
+        assertTrue(explanation.contains("1 dia"),explanation);
+        assertFalse(explanation.contains("1.5000"),explanation);
     }
 
     @Test void adequateSampleBelowFinancialGoalsGeneratesExplainedInvestigationOnly() {
