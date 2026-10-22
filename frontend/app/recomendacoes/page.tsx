@@ -113,6 +113,13 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
     </div>
     {result.error && <div className="alertBanner error" role="alert">{result.error}</div>}
     {report && <>
+      <p className="recommendationsAppliedGoals">
+        <strong>Metas usadas nesta análise:</strong>{" "}
+        {report.targetRoas !== null ? "ROAS mínimo " + number(report.targetRoas,2) + "x" : "ROAS não informado"}
+        {" · "}
+        {report.targetCpa !== null ? "CPA máximo " + money(report.targetCpa,"BRL") : "CPA não informado"}
+        <span>Alterou algum valor acima? Clique em “Analisar campanhas” para atualizar as orientações.</span>
+      </p>
       <section className="recommendationsSummary" aria-label="Resumo da análise">
         <div><small>Campanhas com evidências</small><strong>{campaignCount}</strong></div>
         <div><small>Orientações geradas</small><strong>{report.recommendations.length}</strong></div>
