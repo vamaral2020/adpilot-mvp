@@ -926,3 +926,69 @@ reaplica esses valores e não salva dados.
 - Fonte Nuvemshop continua expressamente não auditada por data de pagamento.
 - Sem alterações no motor de recomendações, Meta Ads ou Nuvemshop
   externos, políticas de OAuth ou escrita em anúncios.
+
+
+## PR 021 — Recomendações orientadas pela qualidade da coleta
+
+O motor de regras passa da versão 1 para a **versão 2**, mantendo os limiares
+comerciais de amostra e as fórmulas de ROAS/CPA. A principal alteração é o
+**controle de qualidade anterior à análise financeira**, utilizando as janelas
+de Meta Ads consultadas com sucesso no PR 020.
+
+### Fontes e limites
+
+- A prévia `GET /api/v1/analytics/recommendations` continua **somente leitura**.
+  Consulta snapshots de métricas locais, o estado do último sync e os recibos
+  de janela `analytics_sync_window`; **não chama** Meta nem Nuvemshop.
+- `report.quality` informa `status`, dias solicitados/consultados,
+  dias com linhas/sem linhas, datas sem comprovante, instante de conclusão
+  da janela, `syncFresh` e `analysisEligible`.
+- Status: `NO_COLLECTION_RECEIPT`, `PARTIAL_WINDOWS`,
+  `WINDOWS_OBSERVED`, `MULTIPLE_ACCOUNTS`,
+  `ACCOUNT_MISMATCH`, `CURRENT_DAY_INCOMPLETE`.
+- `syncFresh` exige que **a execução mais recente tenha estado
+  `SUCCEEDED`**, que tanto o último checkpoint quanto o último recibo
+  estejam dentro de **24 horas** e que nenhum deles esteja mais de
+  cinco minutos no futuro em relação ao relógio da avaliação.
+- `analysisEligible=true` **só** quando todos os dias do período
+  pertencem a janelas observadas de uma mesma conta, o período não
+  inclui o dia UTC atual e o sync está recente. Essa condição é apenas
+  permissão para emitir recomendações **consultivas**. **Nunca**
+  equivale a dados financeiramente auditados. Por isso
+  `coverageVerified=false` permanece em todos os relatórios.
+- Dias consultados sem linhas registradas não são inferidos como
+  investimento ou vendas iguais a zero. A Meta pode retificar
+  atribuições; a Nuvemshop não tem pedido-campanha conciliado.
+- A regra `DATA_QUALITY_LIMITED` orienta revisar a coleta, com contagem
+  de dias usada como evidência. Quando ela é acionada, as regras
+  `ROAS_BELOW_TARGET`, `CPA_ABOVE_TARGET`,
+  `SPEND_WITHOUT_PURCHASES`, `CTR_DECLINING`,
+  `CPC_INCREASING`, `WITHIN_TARGETS` e
+  `FAVORABLE_PERFORMANCE` ficam bloqueadas.
+- `LOW_SAMPLE` continua independente: menos de cinco compras
+  atribuídas, período menor que sete dias ou menos de três dias com
+  linhas da campanha não justificam alterações de orçamento.
+  Se houver também lacunas de coleta, as duas limitações são
+  comunicadas separadamente.
+- Mesmo com dados recentes e dias observados, o motor só permite
+  `INVESTIGATE`, `MONITOR_ONLY`, `REVIEW_DATA` ou
+  `CONFIGURE_TARGETS`, **nunca** pausa, escala ou altera campanhas
+  automaticamente.
+
+### Interface
+
+A página **Recomendações** agora mostra o bloco “Qualidade dos dados usados
+na análise”, com resumo de cobertura, quantidade de dias e aviso de
+sincronização. A **Visão geral** dá prioridade a um alerta de qualidade
+`DATA_QUALITY_LIMITED` quando existir uma campanha afetada.
+
+**Exemplo homologado**: de 14 a 21/10/2026, a Meta foi consultada nos 8 dias,
+6 com linhas e 2 sem linhas. A janela, se ainda recente e bem-sucedida,
+passa no gate de consulta. A campanha anterior continua `LOW_SAMPLE`
+por possuir apenas três compras atribuídas. A conclusão financeira
+permanece preliminar; o recibo não é prova de venda paga.
+
+**Sem Flyway novo**, sem integração adicional, sem mudança de orçamento,
+sem novas dependências. Avaliações armazenadas via POST permanecem
+apenas registros `DRAFT` locais e as recomendações guardam métricas
+da qualidade da coleta como evidência.
