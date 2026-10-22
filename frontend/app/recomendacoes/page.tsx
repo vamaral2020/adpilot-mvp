@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { recommendationQualitySummary, type RecommendationDataQuality }
+  from "../../lib/recommendation-spotlight";
 import { money, number, resolvePeriod } from "../../lib/dashboard";
 import { parseOptionalGoal } from "../../lib/recommendation-goals";
 
@@ -17,6 +19,7 @@ type Report = {
   since: string; until: string; targetRoas: number | null; targetCpa: number | null;
   coverageVerified: boolean; generatedAt: string; metaSyncStatus: string | null;
   lastMetaSyncSuccess: string | null; warnings: string[]; recommendations: Advice[];
+  quality?: RecommendationDataQuality | null;
 };
 type Params = {
   since?: string | string[]; until?: string | string[];
@@ -28,7 +31,11 @@ const metricLabels: Record<string,string> = {
   ATTRIBUTED_REVENUE: "Receita atribuída", ROAS: "ROAS atribuído",
   CPA: "CPA atribuído", IMPRESSIONS: "Impressões", CLICKS: "Cliques totais",
   OBSERVED_DAYS: "Dias com registros", TARGET_ROAS: "ROAS-alvo",
-  TARGET_CPA: "CPA máximo", CTR_PREVIOUS_PCT: "CTR anterior",
+  TARGET_CPA: "CPA máximo", PERIOD_DAYS: "Dias selecionados",
+  COLLECTED_DAYS: "Dias com consulta comprovada",
+  UNCOLLECTED_DAYS: "Dias sem coleta comprovada",
+  DAYS_WITHOUT_ROWS: "Dias consultados sem linhas",
+  CTR_PREVIOUS_PCT: "CTR anterior",
   CTR_RECENT_PCT: "CTR recente", CPC_PREVIOUS: "CPC anterior",
   CPC_RECENT: "CPC recente", CTR_PCT: "CTR", CPC: "CPC",
 };
@@ -129,12 +136,40 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
         <div><small>Confiabilidade histórica</small>
           <strong>{report.coverageVerified?"Verificada":"Ainda não verificada"}</strong></div>
       </section>
+      <section className="recommendationQualityPanel" aria-labelledby="recommendationQualityTitle">
+        <div className="smallEyebrow">FONTE: META ADS · AUDITORIA DE COLETA</div>
+        <h2 id="recommendationQualityTitle">Qualidade dos dados usados na análise</h2>
+        <p>{recommendationQualitySummary(report.quality)}</p>
+        {report.quality && <>
+          <div className="recommendationQualityGrid">
+            <div><small>Dias do período</small><strong>{report.quality.requestedDays}</strong></div>
+            <div><small>Dias consultados</small><strong>{report.quality.collectedDays}</strong></div>
+            <div><small>Sem coleta comprovada</small><strong>{report.quality.uncollectedDates.length}</strong></div>
+            <div><small>Consultados sem linhas</small><strong>{report.quality.daysWithoutRows}</strong></div>
+          </div>
+          <p className="recommendationQualityGate">
+            {report.quality.analysisEligible
+              ? "Coleta recente e janela observada: permitidas apenas investigações consultivas, sem mudanças automáticas."
+              : "Coleta incompleta ou não confirmada: o AdPilot prioriza verificar dados antes de sugerir investigações financeiras."}
+          </p>
+          <details className="recommendationQualityDetails">
+            <summary>Ver datas sem coleta comprovada</summary>
+            <p>{report.quality.uncollectedDates.length
+              ? report.quality.uncollectedDates.join(", ")
+              : "Não há dias sem comprovante de coleta Meta no período."}</p>
+          </details>
+        </>}
+        <p className="recommendationQualityDisclaimer">
+          Consulta concluída não prova atribuição definitiva da Meta, nem corresponde
+          a pedidos individualmente conciliados na Nuvemshop. Dias sem linhas não
+          significam compras ou investimento iguais a zero.
+        </p>
+      </section>
       <div className="alertBanner caution" role="status">
         <strong>Recomendações preliminares</strong>
-        <span>Os resultados da Meta são atribuídos pela plataforma, não vinculados a pedidos
-          individuais da loja. A cobertura histórica ainda não está comprovada e conversões
-          podem sofrer ajustes posteriores. Por isso, nenhuma recomendação autoriza pausar,
-          aumentar ou reduzir automaticamente o orçamento.</span>
+        <span>As compras e receitas são atribuídas pela Meta e podem sofrer ajustes.
+          Nenhuma orientação altera automaticamente orçamento, público ou anúncios.
+          O status das janelas consultadas não certifica a completude financeira da loja.</span>
       </div>
       {report.warnings.includes("BUSINESS_GOALS_NOT_CONFIGURED") &&
         <p className="recommendationsHint">Informe ROAS desejado e/ou CPA máximo para comparar
@@ -150,7 +185,8 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
                 {item.campaignId && <small className="recommendationCampaignId">ID {item.campaignId}</small>}
               </div>
               <span className={"recommendationTag "+(item.priority==="MEDIUM"?"recommendationTagMedium":"")}>
-                {item.confidence==="INSUFFICIENT"?"Evidência insuficiente":"Evidência preliminar"}
+                {item.ruleCode==="DATA_QUALITY_LIMITED"?"Verificar dados":
+                  item.confidence==="INSUFFICIENT"?"Evidência insuficiente":"Evidência preliminar"}
               </span>
             </div>
             <p>{item.justification}</p>
