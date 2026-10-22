@@ -85,7 +85,7 @@ public class EconomicGoalService {
             throw bad("Confirme explicitamente que a campanha vende uma unidade de um único produto.");
         if(!repository.goalExists(request.goalId()))
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Meta econômica não encontrada.");
-        if(!repository.eligibleCampaign(accountId,campaignId()))
+        if(!repository.eligibleCampaign(accountId,campaignId))
             throw bad("Campanha ou moeda não identificada nos dados Meta locais. Apenas campanhas BRL com evidência coletada.");
         repository.link(accountId,campaignId,request.goalId());
         return new Result("LINKED",accountId,campaignId,request.goalId());
