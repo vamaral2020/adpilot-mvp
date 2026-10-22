@@ -836,3 +836,9 @@ informe **0** no campo de reserva e compare com CPA/ROAS de equilíbrio.
 
 Os custos continuam apenas na memória da interface; nenhuma persistência,
 migration ou chamada à Meta/Nuvemshop foi adicionada.
+
+### PR 019.2 — Terminologia do lucro desejado
+
+A interface apresenta o campo econômico anteriormente chamado **Resultado mínimo a preservar** como **Lucro desejado por venda**. Ele significa quanto se deseja conservar **após os custos variáveis e a publicidade**, antes dos custos fixos não modelados. Evitamos denominá-lo “lucro bruto” porque, na terminologia contábil, esse conceito usualmente é apurado antes das despesas de publicidade e não equivale ao valor deste campo.
+
+É uma alteração exclusiva de nomenclatura e explicação da interface. O parâmetro interno `desiredProfit`, todas as fórmulas, validações, persistência inexistente e integrações continuam inalterados.
