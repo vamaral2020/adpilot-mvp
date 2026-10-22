@@ -264,3 +264,27 @@ test("goal remains unfeasible if 17% profit exceeds the actual contribution", ()
     assert.equal(result.result.targetRoas,null);
   }
 });
+
+
+test("initial editable costs reflect the agreed store defaults without saving them", () => {
+  assert.equal(EMPTY_COST_FORM.price,"199");
+  assert.equal(EMPTY_COST_FORM.productCost,"");
+  assert.equal(EMPTY_COST_FORM.taxPercent,"4");
+  assert.equal(EMPTY_COST_FORM.paymentPercent,"5");
+  assert.equal(EMPTY_COST_FORM.paymentFixed,"2");
+  assert.equal(EMPTY_COST_FORM.shippingSubsidy,"3");
+  assert.equal(EMPTY_COST_FORM.packaging,"2");
+  assert.equal(EMPTY_COST_FORM.otherCosts,"10");
+  const selected={...EMPTY_COST_FORM,productCost:"78",desiredProfit:"33.83"};
+  const result=calculateProductTargets(selected);
+  assert.equal(result.ok,true);
+  if(result.ok) {
+    assert.equal(result.result.totalCostCents,11291);
+    assert.equal(result.result.contributionCents,8609);
+    assert.equal(result.result.targetCpaCents,5226);
+    assert.equal(result.result.targetRoas,3.81);
+  }
+  // Editing a prefilled default must not mutate the shared initial values.
+  selected.paymentFixed="0";
+  assert.equal(EMPTY_COST_FORM.paymentFixed,"2");
+});
