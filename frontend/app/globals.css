@@ -539,3 +539,42 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
   color:#9bb2c9!important;line-height:1.65}
 .calcRecommendationPrompt a{color:#a7cfff;font-weight:750;text-decoration:underline;
   text-underline-offset:3px}
+
+
+/* PR 019.1: every expense is explicit; the pre-ad margin is an output, not a profit input. */
+.calcRequiredMark{font-weight:800;font-size:13px;color:#f0b48b;padding-left:3px}
+.calcRequiredNotice{background:#152d40;border:1px solid #3b566d;border-radius:10px;
+  padding:13px 15px;margin:0 0 20px;color:#c2d9ec;font-size:12px;line-height:1.65}
+.calcRequiredNotice strong{color:#f1f8ff}
+.calcOptional{padding-top:21px}
+.calcOptionalHeading{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;
+  gap:12px;margin-bottom:10px}
+.calcOptionalHeading h3{margin:0;font-size:16px;letter-spacing:-.2px;color:#e4f1fc}
+.calcOptionalHeading span{font-size:11px;color:#c4dcef;border:1px solid #365771;
+  padding:6px 9px;background:#183449;border-radius:9px}
+.calcOptional>p{margin:4px 0 17px}
+.calcAutoMargin{margin-top:24px;display:flex;justify-content:space-between;align-items:center;
+  gap:22px;flex-wrap:wrap;background:linear-gradient(115deg,#163e3b,#183347);
+  border:1px solid #458d84;border-radius:13px;padding:21px}
+.calcAutoMargin>div{flex:1 1 250px;min-width:0}
+.calcAutoMargin h3{font-size:17px;color:#e4faf1;letter-spacing:-.25px;margin:9px 0}
+.calcAutoMargin p{font-size:12px;line-height:1.65;color:#b1d9d6;margin:0}
+.calcAutoMargin output{display:block;max-width:100%;color:#b2f3db;
+  font-weight:770;font-variant-numeric:tabular-nums;font-size:clamp(20px,2.4vw,29px);
+  overflow-wrap:anywhere}
+.calcAutoMargin output.calcNegative{color:#ffb6aa}
+.calcProfitReserve{margin-top:21px;padding:20px;border:1px solid #3a526d;
+  background:#142338;border-radius:12px}
+.calcProfitReserve h3{margin:0 0 8px;font-size:16px;color:#e2effe}
+.calcProfitReserve>p{font-size:12px;line-height:1.7;color:#a9bed2;margin:0 0 17px}
+.calcProfitReserve .calcField{max-width:480px}
+@media(max-width:700px){
+  .calcAutoMargin{align-items:flex-start;padding:17px}
+  .calcAutoMargin output{width:100%}
+  .calcProfitReserve{padding:17px}
+}
+@media print{
+  .calcRequiredNotice,.calcAutoMargin,.calcProfitReserve{background:#eef5fa!important;
+    border-color:#c7d5df!important}
+  .calcAutoMargin h3,.calcAutoMargin output,.calcProfitReserve h3{color:#163449!important}
+}
