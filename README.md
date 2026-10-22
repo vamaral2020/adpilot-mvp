@@ -781,3 +781,32 @@ A orientação diferencia explicitamente os dados **históricos locais** dos KPI
 O painel histórico nunca apresenta a ausência de registros como vendas iguais a zero; os status das campanhas continuam atuais e não retroativos. ROAS Meta não é lucro, MER da loja não é atribuição, e a Nuvemshop não dispõe de vínculo comprovado por pedido. Não há alterações em API Java, banco, migração, OAuth ou motor de regras.
 
 Testes adicionados validam a escolha conservadora da recomendação em diferentes cenários, enquanto o smoke test do Compose verifica a renderização da homepage sem dados históricos e sem degradação dos endpoints existentes.
+
+## PR 019 — Calculadora de CPA e ROAS antes da campanha
+
+Rota autenticada do frontend: **`http://localhost:13000/calculadora`**, acessível pelo menu **Planejar campanha** e pela página de Recomendações. A ferramenta é **totalmente local ao navegador**: não chama APIs, não salva dados em banco/cookies/localStorage, não lê valores da Nuvemshop e **não cria nem modifica campanhas na Meta Ads**. Serve apenas para planejar metas econômicas a serem consultadas ou configuradas manualmente.
+
+### Entradas e premissas
+
+- Cálculo **por pedido com uma unidade do produto**. O preço de R$ 199 é exemplo preenchido; substitua pelos valores da campanha planejada.
+- Obrigatórias: preço bruto de venda (maior que zero), custo da mercadoria e resultado desejado após publicidade (ambos podem ser zero, se digitados explicitamente).
+- Opcionais e agrupadas para manter o MVP simples: imposto sobre venda (%), tarifa de pagamento (% e R$ fixo), frete subsidiado, embalagem e outros custos variáveis. Campo opcional em branco = 0, exibido explicitamente na interface.
+- Aceita `199,90` e `199.90`, **sem separador de milhar**, no máximo duas casas decimais. Valores não negativos, cada moeda até R$ 1 milhão e percentuais de 0% a 100%. Valor inválido não é silenciosamente convertido em zero.
+- Taxas percentuais calculadas sobre o **preço bruto**, arredondadas individualmente a centavos; os resultados monetários são calculados em **centavos inteiros**, sem somas monetárias em ponto flutuante.
+
+### Equações
+
+- Custos variáveis = mercadoria + percentual de impostos + percentual/tarifa fixa de pagamentos + frete subsidiado + embalagem + outros.
+- Margem de contribuição pré-anúncios = preço de venda − custos variáveis.
+- **CPA de equilíbrio** = margem pré-anúncios (se positiva). **ROAS de equilíbrio** = preço de venda ÷ CPA de equilíbrio.
+- **CPA-alvo** = margem pré-anúncios − resultado desejado após anúncios (deve ser **positivo**). **ROAS-alvo** = preço de venda ÷ CPA-alvo.
+- ROAS sugerido é **arredondado para cima em duas casas**, para que o alvo exibido não fique abaixo do necessário. O CPA mantém centavos inteiros.
+- Se a margem for zero/negativa, ou se o resultado desejado consumir toda a margem, a calculadora exibe **inviável** em vez de CPA zero/ROAS infinito.
+
+### Uso na Meta Ads
+
+A calculadora apresenta CPA-alvo e ROAS-alvo para **referência comercial e cópia**. Dependendo do objetivo e estratégia de lance, a Meta pode oferecer meta de custo por resultado ou ROAS mínimo; não há garantia de que as duas configurações possam ser aplicadas em conjunto. São metas econômicas, **não uma previsão** de resultados nem garantia de lucro. Não equivalem ao ROAS atribuído real da Meta sem confirmar o ticket e o produto comprado. Também não alocam automaticamente despesas fixas, devoluções ou impostos mais complexos.
+
+### Escopo técnico
+
+Somente frontend Next.js/React: `lib/product-targets.ts` contém funções puras; `app/calculadora` implementa a interface interativa; `tests/product-targets.test.mjs` cobre entradas brasileiras, precisão, limites, arredondamento e margens inviáveis. Não há migration, alteração no backend Java, OAuth, permissão de Meta/Nuvemshop nem alteração do motor de recomendações.
