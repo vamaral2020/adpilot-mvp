@@ -150,6 +150,34 @@ jobs:
             -o /tmp/adpilot-pr020-history-ui.html
           grep -Fq 'O quanto do período foi consultado?' /tmp/adpilot-pr020-history-ui.html
           grep -Fq 'Dias sem consulta comprovada' /tmp/adpilot-pr020-history-ui.html
+          # PR 021: a real PostgreSQL snapshot without full V5 receipts
+          # must never generate ROAS/CPA investigative recommendations.
+          docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U adpilot -d adpilot <<'SQL'
+          INSERT INTO analytics_meta_insight_daily
+            (workspace_id,account_id,campaign_id,insight_day,spend,impressions,clicks,
+             attributed_purchases,attributed_revenue,currency)
+          SELECT '00000000-0000-4000-8000-000000000001', '123456','52596120828588',
+                 day::date,100,1000,100,1,150,'BRL'
+          FROM generate_series('2026-10-14'::date,'2026-10-20'::date,interval '1 day') AS day;
+          SQL
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20&targetRoas=3&targetCpa=50' \
+            -o /tmp/adpilot-pr021-rec.json
+          jq -e '.coverageVerified==false and .quality.status=="PARTIAL_WINDOWS"
+            and .quality.collectedDays==3 and .quality.analysisEligible==false
+            and (.warnings|index("RECOMMENDATIONS_DATA_QUALITY_LIMITED")!=null)
+            and (.recommendations|map(.ruleCode)|index("DATA_QUALITY_LIMITED")!=null)
+            and (.recommendations|map(.ruleCode)|index("ROAS_BELOW_TARGET")==null)
+            and (.recommendations|map(.ruleCode)|index("CPA_ABOVE_TARGET")==null)
+            and (.recommendations|map(.actionCode)|all(.=="REVIEW_DATA"))' \
+            /tmp/adpilot-pr021-rec.json
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:13000/recomendacoes?since=2026-10-14&until=2026-10-20&targetRoas=3&targetCpa=50' \
+            -o /tmp/adpilot-pr021-rec.html
+          grep -Fq 'Qualidade dos dados usados na análise' /tmp/adpilot-pr021-rec.html
+          grep -Fq 'Verificar qualidade dos dados antes de decidir' /tmp/adpilot-pr021-rec.html
+          grep -Fq 'Dias consultados' /tmp/adpilot-pr021-rec.html
+
 
           # PR 017: preview is read-only and never pretends an empty period has zero purchases.
           test "$(curl -s -o /dev/null -w '%{http_code}' \
