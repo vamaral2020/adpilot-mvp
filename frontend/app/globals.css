@@ -534,3 +534,8 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
   .calcFieldControl>input{color:#17283b!important}
   .calcGuidanceGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
+
+.calcRecommendationPrompt{margin:16px 0 0!important;font-size:12px!important;
+  color:#9bb2c9!important;line-height:1.65}
+.calcRecommendationPrompt a{color:#a7cfff;font-weight:750;text-decoration:underline;
+  text-underline-offset:3px}
