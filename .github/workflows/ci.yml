@@ -81,13 +81,12 @@ jobs:
             'http://127.0.0.1:13000/calculadora' -o /tmp/adpilot-pr019-calculator.html
           grep -Fq 'Calculadora de CPA e ROAS' /tmp/adpilot-pr019-calculator.html
           grep -Fq 'Custo da mercadoria' /tmp/adpilot-pr019-calculator.html
-          grep -Fq 'Resultado desejado por venda' /tmp/adpilot-pr019-calculator.html
+          grep -Fq 'Resultado mínimo a preservar' /tmp/adpilot-pr019-calculator.html
           grep -Fq 'Metas calculadas' /tmp/adpilot-pr019-calculator.html
           # PR 019.1: explicit zero costs and computed pre-ad result are visible.
           grep -Fq 'Preencha' /tmp/adpilot-pr019-calculator.html
           grep -Fq 'Todos obrigatórios' /tmp/adpilot-pr019-calculator.html
           grep -Fq 'Resultado da venda antes dos anúncios' /tmp/adpilot-pr019-calculator.html
-          grep -Fq 'Resultado mínimo a preservar' /tmp/adpilot-pr019-calculator.html
 
           grep -Fq 'Planejar campanha' /tmp/adpilot-pr018-home.html
 
