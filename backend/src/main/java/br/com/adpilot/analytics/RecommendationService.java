@@ -6,10 +6,10 @@ import br.com.adpilot.analytics.RecommendationModels.Stored;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
+
+
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -26,35 +26,37 @@ public class RecommendationService {
     private static final BigDecimal MAX_CPA = new BigDecimal("1000000");
     private final RecommendationRepository repository;
     private final RecommendationRuleEngine engine;
+    private final AnalyticsHistoryRepository historyRepository;
+    private final RecommendationDataQualityAssessment qualityAssessment;
     private final Clock clock;
 
     @Autowired
     public RecommendationService(RecommendationRepository repository,
-            RecommendationRuleEngine engine) {
-        this(repository,engine,Clock.systemUTC());
+            RecommendationRuleEngine engine, AnalyticsHistoryRepository historyRepository,
+            RecommendationDataQualityAssessment qualityAssessment) {
+        this(repository,engine,historyRepository,qualityAssessment,Clock.systemUTC());
     }
 
     RecommendationService(RecommendationRepository repository,
-            RecommendationRuleEngine engine,Clock clock) {
+            RecommendationRuleEngine engine, AnalyticsHistoryRepository historyRepository,
+            RecommendationDataQualityAssessment qualityAssessment,Clock clock) {
         this.repository=repository;
         this.engine=engine;
+        this.historyRepository=historyRepository;
+        this.qualityAssessment=qualityAssessment;
         this.clock=clock;
     }
 
     @Transactional(readOnly=true)
     public Report preview(Request request) {
         validate(request);
-        var report=engine.evaluate(request,repository.dailyCampaigns(request.since(),request.until()),
-                repository.metaSyncState(),Instant.now(clock));
-        if (request.until().equals(LocalDate.now(clock.withZone(ZoneOffset.UTC)))) {
-            var warnings=new ArrayList<>(report.warnings());
-            warnings.add("CURRENT_DAY_NOT_COMPLETE");
-            return new Report(report.since(),report.until(),report.targetRoas(),
-                    report.targetCpa(),report.coverageVerified(),report.generatedAt(),
-                    report.metaSyncStatus(),report.lastMetaSyncSuccess(),
-                    java.util.List.copyOf(warnings),report.recommendations());
-        }
-        return report;
+        Instant now=Instant.now(clock);
+        var rows=repository.dailyCampaigns(request.since(),request.until());
+        var sync=repository.metaSyncState();
+        var receipts=historyRepository.metaWindows(request.since(),request.until());
+        var quality=qualityAssessment.assess(request,rows,receipts,sync,now);
+        // Reuse PR 020's successful window receipts; never trigger provider requests.
+        return engine.evaluate(request,rows,sync,now,quality);
     }
 
     /** Explicit local write only, never a Meta Ads action. */
