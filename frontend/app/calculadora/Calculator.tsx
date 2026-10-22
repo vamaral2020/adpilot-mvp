@@ -163,11 +163,11 @@ export default function Calculator() {
           </output>
         </div>
         <div className="calcProfitReserve">
-          <h3>Quanto deseja preservar após a publicidade?</h3>
-          <p>Essa escolha é separada do resultado calculado acima.
+          <h3>Qual lucro você deseja obter por venda?</h3>
+          <p>Esse lucro desejado é separado da margem calculada acima.
             Se preservar toda a margem, não sobrará verba para os anúncios.
             Para considerar apenas o ponto de equilíbrio, informe 0.</p>
-          <Field field="desiredProfit" label="Resultado mínimo a preservar" description="Valor por venda a manter depois do gasto com anúncios e antes de custos fixos não informados."
+          <Field field="desiredProfit" label="Lucro desejado por venda" description="Quanto deseja que sobre após custos variáveis e publicidade, antes dos custos fixos não informados. Não é o lucro bruto contábil."
             value={form.desiredProfit} errors={errors} onChange={update} onBlur={markTouched}/>
         </div>
         <div className="calcPanelFooter">
@@ -185,7 +185,7 @@ export default function Calculator() {
           <span className="calcStep">02</span>
           <div>
             <h2 id="calc-results-heading">Seus objetivos de campanha</h2>
-            <p>Metas calculadas a partir do preço, dos custos e da margem desejada.</p>
+            <p>Metas calculadas a partir do preço, dos custos e do lucro desejado após anúncios.</p>
           </div>
         </div>
 
@@ -194,7 +194,7 @@ export default function Calculator() {
             ? `Faltam ${missingCount} ${missingCount===1?"campo":"campos"} para calcular suas metas`
             : "Revise os valores informados"}</strong>
           <p>{missingCount>0
-            ? "Todos os campos precisam ser preenchidos. Informe 0 quando não houver determinado custo ou quando não desejar preservar resultado após os anúncios."
+            ? "Todos os campos precisam ser preenchidos. Informe 0 quando não houver determinado custo ou quando aceitar apenas o ponto de equilíbrio após anúncios."
             : "Os campos precisam conter valores não negativos e percentuais de até 100%."}</p>
         </div>}
 
@@ -205,8 +205,8 @@ export default function Calculator() {
               de venda ou os custos antes de definir metas de CPA e ROAS.</p>
           </div>}
           {result.status==="GOAL_NOT_FEASIBLE" && <div className="calcWarning" role="status">
-            <strong>A margem não comporta o resultado desejado.</strong>
-            <p>O resultado que deseja preservar consome toda a margem antes da publicidade.
+            <strong>A margem não comporta o lucro desejado.</strong>
+            <p>O lucro desejado consome toda a margem antes da publicidade.
               Não há um CPA positivo compatível com essa meta.</p>
           </div>}
 
@@ -215,7 +215,7 @@ export default function Calculator() {
               <span>CPA-alvo máximo</span>
               <strong>{feasible&&result.targetCpaCents!==null
                 ? formatMoney(result.targetCpaCents):"Não viável"}</strong>
-              <small>Máximo de publicidade por compra, preservando o resultado desejado.</small>
+              <small>Máximo de publicidade por compra, preservando o lucro desejado.</small>
             </div>
             <div className="calcGoalCard calcGoalCardEmphasis">
               <span>ROAS-alvo mínimo</span>
@@ -256,7 +256,7 @@ export default function Calculator() {
                 <div key={label}><span>{label}</span><strong>{formatMoney(cents)}</strong></div>)}
               <div className="calcBreakdownTotal"><span>Margem para anúncios e resultado</span>
                 <strong>{formatMoney(result.contributionCents)}</strong></div>
-              <div><span>Resultado desejado após anúncios</span>
+              <div><span>Lucro desejado após anúncios</span>
                 <strong>{formatMoney(result.desiredProfitCents)}</strong></div>
             </div>
           </details>
