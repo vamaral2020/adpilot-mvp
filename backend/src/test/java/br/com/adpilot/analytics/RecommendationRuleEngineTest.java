@@ -2,6 +2,7 @@ package br.com.adpilot.analytics;
 
 import static org.junit.jupiter.api.Assertions.*;
 import br.com.adpilot.analytics.RecommendationModels.DataQuality;
+import br.com.adpilot.analytics.RecommendationModels.LinkedGoal;
 import br.com.adpilot.analytics.RecommendationModels.DailyCampaign;
 import br.com.adpilot.analytics.RecommendationModels.Request;
 import br.com.adpilot.analytics.RecommendationModels.SyncState;
@@ -211,6 +212,99 @@ class RecommendationRuleEngineTest {
         assertTrue(contains(report,"CPA_ABOVE_TARGET"));
         assertTrue(report.recommendations().stream().noneMatch(r ->
                 r.actionCode().contains("PAUSE") || r.actionCode().contains("SCALE")));
+    }
+
+
+    private static LinkedGoal goal(String campaign, String label,
+            String cpa,String roas) {
+        return new LinkedGoal(java.util.UUID.randomUUID(),"123",campaign,label,
+                19900,bd(cpa),bd(roas),NOW);
+    }
+
+    @Test void distinctCampaignsUseOnlyTheirOwnManuallyLinkedProductTargets() {
+        var req=new Request(START,START.plusDays(6),null,null);
+        var rows=new ArrayList<DailyCampaign>();
+        for(int i=0;i<7;i++) {
+            rows.add(row(i,"100","1","150",1000,100));
+            rows.add(new DailyCampaign("123","777","Outro produto","BRL",
+                    START.plusDays(i),bd("20"),1000,100,bd("1"),bd("200")));
+        }
+        var goals=List.of(goal("52596120828588","Vestido azul","52.26","3.81"),
+                goal("777","Blusa branca","30","8"));
+        var report=engine.evaluate(req,rows,new SyncState("SUCCEEDED",NOW),NOW,
+                quality(req,rows,true),goals);
+        assertEquals(2,report.linkedGoals().size());
+        assertTrue(report.warnings().contains("MANUALLY_LINKED_PRODUCT_GOALS"));
+        assertFalse(report.warnings().contains("BUSINESS_GOALS_NOT_CONFIGURED"));
+        assertFalse(contains(report,"CONFIGURE_GOALS"));
+        assertTrue(report.recommendations().stream().anyMatch(a ->
+                "52596120828588".equals(a.campaignId())
+                && "ROAS_BELOW_TARGET".equals(a.ruleCode())));
+        assertTrue(report.recommendations().stream().anyMatch(a ->
+                "52596120828588".equals(a.campaignId())
+                && "CPA_ABOVE_TARGET".equals(a.ruleCode())));
+        assertTrue(report.recommendations().stream().anyMatch(a ->
+                "777".equals(a.campaignId())
+                && "WITHIN_TARGETS".equals(a.ruleCode())));
+        assertFalse(report.recommendations().stream().anyMatch(a ->
+                "777".equals(a.campaignId())
+                && ("ROAS_BELOW_TARGET".equals(a.ruleCode())
+                    || "CPA_ABOVE_TARGET".equals(a.ruleCode()))));
+    }
+
+    @Test void manualOverridesTakePrecedenceOverLinkedProductGoals() {
+        var req=new Request(START,START.plusDays(6),bd("1"),bd("200"));
+        var rows=new ArrayList<DailyCampaign>();
+        for(int i=0;i<7;i++) rows.add(row(i,"100","1","150",1000,100));
+        var report=engine.evaluate(req,rows,new SyncState("SUCCEEDED",NOW),NOW,
+                quality(req,rows,true),
+                List.of(goal("52596120828588","Vestido","52.26","3.81")));
+        assertTrue(report.warnings().contains("MANUAL_TARGET_OVERRIDES_LINKED_GOALS"));
+        assertTrue(contains(report,"WITHIN_TARGETS"));
+        assertFalse(contains(report,"ROAS_BELOW_TARGET"));
+        assertFalse(contains(report,"CPA_ABOVE_TARGET"));
+        assertEquals(bd("52.26"),report.linkedGoals().getFirst().targetCpa());
+    }
+
+    @Test void noCampaignProductLinkDoesNotInheritAnotherCampaignsGoal() {
+        var req=new Request(START,START.plusDays(6),null,null);
+        var rows=new ArrayList<DailyCampaign>();
+        for(int i=0;i<7;i++) rows.add(row(i,"100","1","150",1000,100));
+        var unrelated=goal("777","Outro","52.26","3.81");
+        var report=engine.evaluate(req,rows,new SyncState("SUCCEEDED",NOW),NOW,
+                quality(req,rows,true),List.of(unrelated));
+        assertTrue(report.linkedGoals().isEmpty());
+        assertTrue(contains(report,"CONFIGURE_GOALS"));
+        assertFalse(contains(report,"ROAS_BELOW_TARGET"));
+        assertFalse(contains(report,"CPA_ABOVE_TARGET"));
+    }
+
+    @Test void linkedThreePurchaseCampaignStillReceivesLowSampleAndNoScaling() {
+        var req=new Request(START,START.plusDays(6),null,null);
+        var rows=List.of(row(2,"30","1","100",800,80),
+                row(3,"50","1","120",1000,100),
+                row(4,"50.88","1","150",1000,100));
+        var report=engine.evaluate(req,rows,new SyncState("SUCCEEDED",NOW),NOW,
+                quality(req,rows,true),
+                List.of(goal("52596120828588","Vestido","52.26","3.81")));
+        assertTrue(contains(report,"LOW_SAMPLE"));
+        assertFalse(contains(report,"ROAS_BELOW_TARGET"));
+        assertFalse(contains(report,"CPA_ABOVE_TARGET"));
+        assertFalse(report.coverageVerified());
+        assertTrue(report.recommendations().stream().allMatch(a->
+                a.actionCode().equals("MONITOR_ONLY")));
+    }
+
+    @Test void staleDataSuppressesFinancialAdviceEvenWithSavedProductGoal() {
+        var req=new Request(START,START.plusDays(6),null,null);
+        var rows=new ArrayList<DailyCampaign>();
+        for(int i=0;i<7;i++) rows.add(row(i,"100","1","150",1000,100));
+        var report=engine.evaluate(req,rows,new SyncState("FAILED",NOW),NOW,
+                quality(req,rows,false),
+                List.of(goal("52596120828588","Vestido","52.26","3.81")));
+        assertTrue(contains(report,"DATA_QUALITY_LIMITED"));
+        assertFalse(contains(report,"ROAS_BELOW_TARGET"));
+        assertFalse(contains(report,"CPA_ABOVE_TARGET"));
     }
 
 }
