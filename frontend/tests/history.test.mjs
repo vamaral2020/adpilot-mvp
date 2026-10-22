@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sums, graphBars, campaignOutcome, storeOutcome } from "../lib/history.ts";
+import { sums, graphBars, campaignOutcome, storeOutcome, coverageMessage } from "../lib/history.ts";
 
 test("does not add currencies when reporting a historical total", () => {
   assert.equal(sums([{ currency: "BRL", value: 50 }, { currency: "USD", value: 5 }]), null);
@@ -91,4 +91,29 @@ test("daily Meta purchases are summed once per row, preserving reported attribut
   assert.equal(outcome.purchases, 3);
   assert.equal(outcome.revenue.value, 400);
   assert.equal(outcome.roas, 4);
+});
+
+
+test("reports missing collection receipts without relabeling absent values as zero", () => {
+  assert.match(coverageMessage(),/Não há diagnóstico/);
+  const base={store:{status:"UPDATED_AT_ONLY_NOT_PAID_DATE",
+    successfulUpdateWindows:0,lastSuccess:null}};
+  const meta={status:"NO_COLLECTION_RECEIPT",accountId:null,requestedDays:7,
+    observedDays:0,datesWithRows:1,datesWithoutRows:0,unobservedDates:["2026-10-15"],
+    observedWithoutRows:[],lastSuccess:null};
+  assert.match(coverageMessage({...base,meta}),/não são prova de cobertura/i);
+  assert.match(coverageMessage({...base,meta:{...meta,status:"PARTIAL_WINDOWS"}}),
+    /apenas parte do período/i);
+  assert.match(coverageMessage({...base,meta:{...meta,status:"MULTIPLE_ACCOUNTS"}}),
+    /contas Meta diferentes/i);
+});
+
+test("all queried dates still do not certify attributed totals or zero sales", () => {
+  const meta={status:"WINDOWS_OBSERVED",accountId:"123",requestedDays:2,
+    observedDays:2,datesWithRows:1,datesWithoutRows:1,unobservedDates:[],
+    observedWithoutRows:["2026-10-16"],lastSuccess:"2026-10-22T11:00:00Z"};
+  const msg=coverageMessage({meta,store:{status:"UPDATED_AT_ONLY_NOT_PAID_DATE",
+    successfulUpdateWindows:1,lastSuccess:null}});
+  assert.match(msg,/não comprova atribuição definitiva/i);
+  assert.match(msg,/vendas iguais a zero/i);
 });
