@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -54,9 +55,11 @@ public class RecommendationRuleEngine {
             case "PARTIAL_WINDOWS" -> warnings.add("META_COLLECTION_WINDOWS_PARTIAL");
             case "MULTIPLE_ACCOUNTS" -> warnings.add("META_MULTIPLE_ACCOUNTS_UNRESOLVED");
             case "ACCOUNT_MISMATCH" -> warnings.add("META_COLLECTION_ACCOUNT_MISMATCH");
-            case "CURRENT_DAY_INCOMPLETE" -> warnings.add("CURRENT_DAY_NOT_COMPLETE");
+            case "CURRENT_DAY_INCOMPLETE" -> { /* handled by the calendar-day guard below */ }
             default -> { }
         }
+        if (request.until().equals(generatedAt.atZone(ZoneOffset.UTC).toLocalDate()))
+            warnings.add("CURRENT_DAY_NOT_COMPLETE");
         if (quality.daysWithoutRows() > 0)
             warnings.add("META_FETCHED_DAYS_WITHOUT_REPORTED_ROWS");
         if (!quality.analysisEligible())
