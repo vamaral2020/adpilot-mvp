@@ -21,7 +21,7 @@ class RecommendationControllerTest {
     private final Report report=new Report(from,until,input.targetRoas(),input.targetCpa(),false,
             Instant.parse("2026-10-21T12:00:00Z"),"SUCCEEDED",
             Instant.parse("2026-10-21T11:00:00Z"),List.of("HISTORICAL_COVERAGE_NOT_VERIFIED"),
-            List.of(),null);
+            List.of(),null,List.of());
 
     @Test void previewIsReadOnlyAndDisablesCaching() {
         when(service.preview(input)).thenReturn(report);
