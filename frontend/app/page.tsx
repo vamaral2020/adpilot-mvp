@@ -238,20 +238,20 @@ function CampaignTable({ summary, listing, currency }: {
         const calculated = analyzedById.get(id);
         const spend = finite(metrics?.spend);
         return <tr key={id}>
-          <td><div className="campaignCell"><span className="campaignAvatar"><Icon name="activity"/></span>
+          <td data-label="Campanha"><div className="campaignCell"><span className="campaignAvatar"><Icon name="activity"/></span>
             <span className="campaignDetails"><strong>{c?.name ?? insight?.campaignName ?? id}</strong>
               <small>ID {id}</small></span></div></td>
-          <td><CampaignStatus campaign={c}/></td>
-          <td><div className="spendCell"><strong>{money(spend, currency)}</strong>
+          <td data-label="Status"><CampaignStatus campaign={c}/></td>
+          <td data-label="Investimento"><div className="spendCell"><strong>{money(spend, currency)}</strong>
             <div className="tinyTrack"><span style={{width: highest && spend !== null
               ? (spend / highest * 100) + "%" : "0%"}}/></div>
           </div></td>
-          <td>{calculated ? percentage(calculated.spendShare) : "—"}</td>
-          <td>{metrics ? number(metrics.clicks) : "—"}</td>
-          <td>{metrics ? number(metrics.purchases, 2) : "—"}</td>
-          <td>{metrics ? money(metrics.purchaseValue, currency) : "—"}</td>
-          <td>{calculated ? money(calculated.costPerAttributedPurchase, currency) : "—"}</td>
-          <td><span className="roasValue">{metrics ? multiplier(metrics.roas) : "—"}</span></td>
+          <td data-label="% do gasto">{calculated ? percentage(calculated.spendShare) : "—"}</td>
+          <td data-label="Cliques">{metrics ? number(metrics.clicks) : "—"}</td>
+          <td data-label="Compras Meta">{metrics ? number(metrics.purchases, 2) : "—"}</td>
+          <td data-label="Receita atribuída">{metrics ? money(metrics.purchaseValue, currency) : "—"}</td>
+          <td data-label="Custo por compra">{calculated ? money(calculated.costPerAttributedPurchase, currency) : "—"}</td>
+          <td data-label="ROAS Meta"><span className="roasValue">{metrics ? multiplier(metrics.roas) : "—"}</span></td>
         </tr>;
       })}</tbody>
     </table></div> :
