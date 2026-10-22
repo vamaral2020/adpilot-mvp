@@ -15,11 +15,15 @@ type Advice = {
   actionCode: string; title: string; justification: string;
   evidence: Metric[]; limitations: string[];
 };
+type LinkedGoal = { goalId:string; accountId:string; campaignId:string;
+  productLabel:string; priceCents:number; targetCpa:number; targetRoas:number;
+  linkedAt:string; };
 type Report = {
   since: string; until: string; targetRoas: number | null; targetCpa: number | null;
   coverageVerified: boolean; generatedAt: string; metaSyncStatus: string | null;
   lastMetaSyncSuccess: string | null; warnings: string[]; recommendations: Advice[];
   quality?: RecommendationDataQuality | null;
+  linkedGoals?: LinkedGoal[];
 };
 type Params = {
   since?: string | string[]; until?: string | string[];
@@ -31,7 +35,10 @@ const metricLabels: Record<string,string> = {
   ATTRIBUTED_REVENUE: "Receita atribuída", ROAS: "ROAS atribuído",
   CPA: "CPA atribuído", IMPRESSIONS: "Impressões", CLICKS: "Cliques totais",
   OBSERVED_DAYS: "Dias com registros", TARGET_ROAS: "ROAS-alvo",
-  TARGET_CPA: "CPA máximo", PERIOD_DAYS: "Dias selecionados",
+  TARGET_CPA: "CPA máximo",
+  LINKED_GOAL_CPA: "CPA do produto associado",
+  LINKED_GOAL_ROAS: "ROAS do produto associado",
+  PERIOD_DAYS: "Dias selecionados",
   COLLECTED_DAYS: "Dias com consulta comprovada",
   UNCOLLECTED_DAYS: "Dias sem coleta comprovada",
   DAYS_WITHOUT_ROWS: "Dias consultados sem linhas",
@@ -39,8 +46,8 @@ const metricLabels: Record<string,string> = {
   CTR_RECENT_PCT: "CTR recente", CPC_PREVIOUS: "CPC anterior",
   CPC_RECENT: "CPC recente", CTR_PCT: "CTR", CPC: "CPC",
 };
-const moneyMetrics = new Set(["SPEND","ATTRIBUTED_REVENUE","CPA","TARGET_CPA","CPC_PREVIOUS","CPC_RECENT","CPC"]);
-const ratioMetrics = new Set(["ROAS","TARGET_ROAS"]);
+const moneyMetrics = new Set(["SPEND","ATTRIBUTED_REVENUE","CPA","TARGET_CPA","LINKED_GOAL_CPA","CPC_PREVIOUS","CPC_RECENT","CPC"]);
+const ratioMetrics = new Set(["ROAS","TARGET_ROAS","LINKED_GOAL_ROAS"]);
 const pctMetrics = new Set(["CTR_PREVIOUS_PCT","CTR_RECENT_PCT","CTR_PCT"]);
 function readableMetric(metric: Metric, currency: string | null): string {
   if (metric.value === null || !Number.isFinite(metric.value)) return "—";
@@ -86,6 +93,9 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
     ? {error:validationError}
     : await load(period.since,period.until,roasGoal.value??"",cpaGoal.value??"");
   const report=result.data;
+  const linked=new Map((report?.linkedGoals??[]).map(goal=>[
+    goal.accountId+":"+goal.campaignId,goal
+  ] as const));
   const campaignCount=new Set(report?.recommendations.filter(x=>x.campaignId).map(x=>
     x.accountId+":"+x.campaignId) ?? []).size;
   return <main className="historyShell">
@@ -100,19 +110,20 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
         Nenhuma campanha ou orçamento é alterado pelo AdPilot.</p>
       <p className="calcRecommendationPrompt">
         Vai criar uma campanha? <Link href="/calculadora">Planeje seu CPA e ROAS a partir da margem do produto →</Link>
+        {" · "}<Link href="/planejamento">Associar produtos às campanhas →</Link>
       </p>
     </header>
     <div className="filterPanel">
       <form className="filterForm" method="GET">
         <label>De <input type="date" name="since" required defaultValue={period.since}/></label>
         <label>Até <input type="date" name="until" required defaultValue={period.until}/></label>
-        <label>ROAS mínimo desejado
+        <label>ROAS mínimo desejado (opcional; substitui a meta salva)
           <input type="text" inputMode="decimal" name="targetRoas"
             pattern="[0-9]+([.,][0-9]{1,4})?" maxLength={20}
             title="Informe um número positivo, como 3,4 ou 3.4 (até 4 casas decimais)."
             placeholder="Ex.: 3,4" defaultValue={targetRoas} />
         </label>
-        <label>CPA máximo (R$)
+        <label>CPA máximo (R$; opcional, substitui a meta salva)
           <input type="text" inputMode="decimal" name="targetCpa"
             pattern="[0-9]+([.,][0-9]{1,4})?" maxLength={20}
             title="Informe um valor positivo, como 75 ou 75,50 (até 4 casas decimais)."
@@ -124,11 +135,14 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
     {result.error && <div className="alertBanner error" role="alert">{result.error}</div>}
     {report && <>
       <p className="recommendationsAppliedGoals">
-        <strong>Metas usadas nesta análise:</strong>{" "}
-        {report.targetRoas !== null ? "ROAS mínimo " + number(report.targetRoas,2) + "x" : "ROAS não informado"}
-        {" · "}
-        {report.targetCpa !== null ? "CPA máximo " + money(report.targetCpa,"BRL") : "CPA não informado"}
-        <span>Alterou algum valor acima? Clique em “Analisar campanhas” para atualizar as orientações.</span>
+        <strong>Origem das metas:</strong>{" "}
+        {report.targetRoas!==null || report.targetCpa!==null
+          ? "Metas manuais preenchidas na consulta prevalecem nos respectivos campos."
+          : "Metas salvas são aplicadas apenas às campanhas explicitamente associadas."}
+        {" "}{(report.linkedGoals?.length??0)} vínculo(s) de produto encontrados neste período.
+        <span>ROAS manual: {report.targetRoas!==null?number(report.targetRoas,2)+"x":"não informado"}.
+          CPA manual: {report.targetCpa!==null?money(report.targetCpa,"BRL"):"não informado"}.
+          Campos vazios usam a meta associada, se houver.</span>
       </p>
       <section className="recommendationsSummary" aria-label="Resumo da análise">
         <div><small>Campanhas com evidências</small><strong>{campaignCount}</strong></div>
@@ -172,8 +186,9 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
           O status das janelas consultadas não certifica a completude financeira da loja.</span>
       </div>
       {report.warnings.includes("BUSINESS_GOALS_NOT_CONFIGURED") &&
-        <p className="recommendationsHint">Informe ROAS desejado e/ou CPA máximo para comparar
-          suas campanhas com objetivos reais. Sem essas metas, a análise é principalmente informativa.</p>}
+        <p className="recommendationsHint">Há campanhas sem meta econômica associada.
+          <Link href="/planejamento"> Associe o produto correspondente </Link>
+          ou informe CPA e/ou ROAS manualmente. O AdPilot não cria associações automaticamente.</p>}
       <section className="recommendationsList" aria-label="Recomendações por campanha">
         {report.recommendations.map((item,index)=>
           <article className="recommendationCard" key={item.ruleCode+":"+(item.campaignId??"account")+":"+index}>
@@ -190,6 +205,20 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
               </span>
             </div>
             <p>{item.justification}</p>
+            {item.accountId && item.campaignId && linked.has(item.accountId+":"+item.campaignId) &&
+              (() => {
+                const goal=linked.get(item.accountId+":"+item.campaignId)!;
+                return <p className="recommendationPlanEvidence">
+                  <strong>Produto associado manualmente:</strong> {goal.productLabel}
+                  {" · "}CPA salvo {money(goal.targetCpa,"BRL")}
+                  {" · "}ROAS salvo {number(goal.targetRoas,2)}x.
+                  {report.targetRoas!==null || report.targetCpa!==null
+                    ? " Metas manuais informadas substituem os campos correspondentes nesta análise."
+                    : " Estas metas estão sendo usadas como referência econômica nesta campanha."}
+                  {" "}Considera uma unidade por pedido; não comprova que cada compra Meta
+                  corresponde a esse produto.
+                </p>;
+              })()}
             {item.evidence.length>0 && <details className="recommendationEvidence">
               <summary>Ver métricas que fundamentam a análise</summary>
               <div className="recommendationEvidenceGrid">
