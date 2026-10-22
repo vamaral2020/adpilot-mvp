@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { money, number } from "../../lib/dashboard";
 import {
-  calculateProductTargets, calculateProductContribution, PRICE_FIELDS, EMPTY_COST_FORM,
+  calculateProductTargets, calculateProductContribution, desiredProfitFromPercentage,
+  COST_FIELDS, EMPTY_COST_FORM,
   type CostForm, type PriceField, type CostErrors,
 } from "../../lib/product-targets";
 
@@ -42,16 +43,27 @@ function Field({field,label,description,value,errors,onChange,onBlur,percentage=
 
 export default function Calculator() {
   const [form,setForm]=useState<CostForm>({...EMPTY_COST_FORM});
+  const [desiredProfitPercent,setDesiredProfitPercent]=useState("17");
+  const [percentTouched,setPercentTouched]=useState(false);
   const [touched,setTouched]=useState<Partial<Record<PriceField,boolean>>>({});
   const [copyState,setCopyState]=useState<"idle"|"done"|"error">("idle");
-  const calculation=useMemo(()=>calculateProductTargets(form),[form]);
+  const profit=useMemo(()=>desiredProfitFromPercentage(form.price,desiredProfitPercent),
+    [form.price,desiredProfitPercent]);
+  // Keep the existing CPA/ROAS formulas: translate the % into BRL before calling them.
+  const calculationForm=useMemo<CostForm>(()=>({
+    ...form,desiredProfit:profit.ok?profit.amountInput:"",
+  }),[form,profit]);
+  const calculation=useMemo(()=>calculateProductTargets(calculationForm),[calculationForm]);
   const contribution=useMemo(()=>calculateProductContribution(form),[form]);
-  const missingFields=PRICE_FIELDS.filter(field=>!form[field].trim());
+  const missingFields=COST_FIELDS.filter(field=>!form[field].trim());
+  const percentError=!profit.ok && profit.field==="percent"
+    && (percentTouched || desiredProfitPercent.trim()) ? profit.error : null;
   const errors: CostErrors={};
   if(!calculation.ok) {
     for(const [key,description] of Object.entries(calculation.errors)) {
       const field=key as PriceField;
-      if(touched[field] || form[field].trim()) errors[field]=description;
+      if(field!=="desiredProfit" && (touched[field] || form[field].trim()))
+        errors[field]=description;
     }
   }
   const markTouched=(field: PriceField)=>setTouched(previous=>({...previous,[field]:true}));
@@ -72,7 +84,8 @@ export default function Calculator() {
       "ROAS-alvo mínimo: "+formatRoas(result.targetRoas),
       "CPA de equilíbrio: "+formatMoney(result.breakEvenCpaCents??0),
       "ROAS de equilíbrio: "+formatRoas(result.breakEvenRoas??0),
-      "Lucro desejado após publicidade: "+formatMoney(result.desiredProfitCents),
+      "Lucro desejado por venda: "+desiredProfitPercent.replace(".",",")+"% ("+
+        formatMoney(result.desiredProfitCents)+")",
       "Cálculo interno, não garante resultados. Compare com o ticket real e as opções de lance da Meta.",
     ].join("\n");
     try {
@@ -85,7 +98,7 @@ export default function Calculator() {
   }
 
   const preAdMargin=contribution.ok?contribution.result:null;
-  const missingCount=missingFields.length;
+  const missingCount=missingFields.length+(desiredProfitPercent.trim()?0:1);
 
   return <main className="calcPage">
     <header className="calcHeader">
@@ -163,18 +176,52 @@ export default function Calculator() {
           </output>
         </div>
         <div className="calcProfitReserve">
-          <h3>Quanto deseja preservar após a publicidade?</h3>
-          <p>Essa escolha é separada do resultado calculado acima.
+          <h3>Qual lucro você deseja obter por venda?</h3>
+          <p>Esse lucro desejado é separado da margem calculada acima.
             Se preservar toda a margem, não sobrará verba para os anúncios.
             Para considerar apenas o ponto de equilíbrio, informe 0.</p>
-          <Field field="desiredProfit" label="Resultado mínimo a preservar" description="Valor por venda a manter depois do gasto com anúncios e antes de custos fixos não informados."
-            value={form.desiredProfit} errors={errors} onChange={update} onBlur={markTouched}/>
+          <div className="calcProfitPercentGrid">
+            <div className="calcField calcProfitPercentField">
+              <label htmlFor="calc-desiredProfitPercent">
+                Lucro desejado por venda <span className="calcRequiredMark" title="Obrigatório">*</span>
+              </label>
+              <div className={"calcFieldControl"+(percentError?" calcFieldInvalid":"")}>
+                <span aria-hidden="true">%</span>
+                <input id="calc-desiredProfitPercent" name="desiredProfitPercent"
+                  type="text" inputMode="decimal" autoComplete="off"
+                  spellCheck={false} maxLength={6} required aria-required="true"
+                  placeholder="17" value={desiredProfitPercent}
+                  aria-invalid={Boolean(percentError)}
+                  aria-describedby={"calc-desiredProfitPercent-help"+
+                    (percentError?" calc-desiredProfitPercent-error":"")}
+                  onBlur={()=>setPercentTouched(true)}
+                  onChange={event=>{
+                    setDesiredProfitPercent(event.target.value);
+                    setCopyState("idle");
+                  }}/>
+              </div>
+              <p id="calc-desiredProfitPercent-help" className="calcFieldHelp">
+                Percentual do preço de venda a preservar após publicidade,
+                antes dos custos fixos não informados. Use 0 para o equilíbrio.
+              </p>
+              {percentError && <p id="calc-desiredProfitPercent-error"
+                className="calcFieldError" role="alert">{percentError}</p>}
+            </div>
+            <div className="calcProfitCalculated" aria-live="polite">
+              <span>Lucro desejado calculado</span>
+              <output>{profit.ok
+                ? formatMoney(profit.amountCents)
+                : "Aguardando preço e percentual válidos"}</output>
+              <small>Calculado automaticamente sobre o preço de venda.</small>
+            </div>
+          </div>
         </div>
         <div className="calcPanelFooter">
           <p>Use ponto ou vírgula decimal, por exemplo: 85,50 ou 85.50.
             Não use separador de milhares.</p>
           <button type="button" className="calcReset" onClick={()=>{
-            setForm({...EMPTY_COST_FORM});setTouched({});setCopyState("idle");
+            setForm({...EMPTY_COST_FORM});setDesiredProfitPercent("17");
+            setTouched({});setPercentTouched(false);setCopyState("idle");
           }}>Limpar valores</button>
         </div>
       </section>
@@ -185,7 +232,7 @@ export default function Calculator() {
           <span className="calcStep">02</span>
           <div>
             <h2 id="calc-results-heading">Seus objetivos de campanha</h2>
-            <p>Metas calculadas a partir do preço, dos custos e da margem desejada.</p>
+            <p>Metas calculadas a partir do preço, dos custos e do lucro desejado após anúncios.</p>
           </div>
         </div>
 
@@ -194,8 +241,8 @@ export default function Calculator() {
             ? `Faltam ${missingCount} ${missingCount===1?"campo":"campos"} para calcular suas metas`
             : "Revise os valores informados"}</strong>
           <p>{missingCount>0
-            ? "Todos os campos precisam ser preenchidos. Informe 0 quando não houver determinado custo ou quando não desejar preservar resultado após os anúncios."
-            : "Os campos precisam conter valores não negativos e percentuais de até 100%."}</p>
+            ? "Todos os campos de custo devem ser preenchidos. Informe 0 quando não houver despesa; o percentual de lucro começa em 17% e pode ser alterado."
+            : "Confira os valores: percentuais de 0% a 100%, com até duas casas decimais, e custos não negativos."}</p>
         </div>}
 
         {result && <>
@@ -205,8 +252,8 @@ export default function Calculator() {
               de venda ou os custos antes de definir metas de CPA e ROAS.</p>
           </div>}
           {result.status==="GOAL_NOT_FEASIBLE" && <div className="calcWarning" role="status">
-            <strong>A margem não comporta o resultado desejado.</strong>
-            <p>O resultado que deseja preservar consome toda a margem antes da publicidade.
+            <strong>A margem não comporta o lucro desejado.</strong>
+            <p>O lucro desejado consome toda a margem antes da publicidade.
               Não há um CPA positivo compatível com essa meta.</p>
           </div>}
 
@@ -215,7 +262,7 @@ export default function Calculator() {
               <span>CPA-alvo máximo</span>
               <strong>{feasible&&result.targetCpaCents!==null
                 ? formatMoney(result.targetCpaCents):"Não viável"}</strong>
-              <small>Máximo de publicidade por compra, preservando o resultado desejado.</small>
+              <small>Máximo de publicidade por compra, preservando o lucro desejado.</small>
             </div>
             <div className="calcGoalCard calcGoalCardEmphasis">
               <span>ROAS-alvo mínimo</span>
@@ -256,7 +303,7 @@ export default function Calculator() {
                 <div key={label}><span>{label}</span><strong>{formatMoney(cents)}</strong></div>)}
               <div className="calcBreakdownTotal"><span>Margem para anúncios e resultado</span>
                 <strong>{formatMoney(result.contributionCents)}</strong></div>
-              <div><span>Resultado desejado após anúncios</span>
+              <div><span>Lucro desejado após anúncios ({desiredProfitPercent.replace(".",",")}%)</span>
                 <strong>{formatMoney(result.desiredProfitCents)}</strong></div>
             </div>
           </details>

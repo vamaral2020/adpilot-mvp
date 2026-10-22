@@ -578,3 +578,18 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
     border-color:#c7d5df!important}
   .calcAutoMargin h3,.calcAutoMargin output,.calcProfitReserve h3{color:#163449!important}
 }
+
+
+/* Desired profit: only this planner input changes from BRL to percentage. */
+.calcProfitPercentGrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,.92fr);
+  gap:15px;align-items:start;max-width:580px}
+.calcProfitCalculated{display:flex;flex-direction:column;justify-content:center;min-height:108px;
+  background:#193c3c;border:1px solid #3d7c75;border-radius:10px;padding:14px 16px}
+.calcProfitCalculated>span{font-size:11px;color:#b8dbd5;font-weight:650}
+.calcProfitCalculated output{font-size:clamp(17px,2vw,23px);font-weight:800;color:#b5f5e3;
+  font-variant-numeric:tabular-nums;margin:8px 0 5px;overflow-wrap:anywhere}
+.calcProfitCalculated small{font-size:10px;line-height:1.5;color:#a2cbc5}
+@media(max-width:650px){.calcProfitPercentGrid{grid-template-columns:1fr;max-width:none}}
+@media print{.calcProfitCalculated{background:#e6f5ef!important;border-color:#92bcae!important}
+  .calcProfitCalculated>span,.calcProfitCalculated output,.calcProfitCalculated small{
+    color:#174936!important}}

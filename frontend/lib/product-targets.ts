@@ -87,6 +87,31 @@ function parsePercent(raw: string): number | string {
   return parseFixed(raw,10_000);
 }
 
+/** The only new user input is desired profit as a percentage of sale price. */
+export type DesiredProfitPercentage =
+  | { ok: true; percentBasisPoints: number; amountCents: number; amountInput: string }
+  | { ok: false; field: "price" | "percent"; error: string };
+
+export function desiredProfitFromPercentage(priceRaw: string, percentRaw: string): DesiredProfitPercentage {
+  if (!percentRaw.trim()) {
+    return { ok: false, field: "percent",
+      error: "Informe o lucro desejado em percentual. Use 0 para o ponto de equilíbrio." };
+  }
+  const percentBasisPoints = parsePercent(percentRaw);
+  if (typeof percentBasisPoints === "string") {
+    return { ok: false, field: "percent",
+      error: "Informe um percentual entre 0 e 100, com até duas casas decimais (ex.: 17 ou 17,50)." };
+  }
+  const priceCents = parseFixed(priceRaw,MAX_AMOUNT_CENTS);
+  if (typeof priceCents === "string" || priceCents <= 0) {
+    return { ok: false, field: "price", error: "Informe um preço de venda válido." };
+  }
+  // Integer cents x integer basis points: round the percentage only once to cents.
+  const amountCents = Math.round(priceCents * percentBasisPoints / 10_000);
+  const amountInput = Math.floor(amountCents/100) + "." + String(amountCents % 100).padStart(2,"0");
+  return { ok: true, percentBasisPoints, amountCents, amountInput };
+}
+
 function readFields(form: CostForm, fields: readonly PriceField[]) {
   const errors: CostErrors = {};
   const amounts = {} as Record<PriceField, number>;

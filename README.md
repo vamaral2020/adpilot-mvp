@@ -836,3 +836,17 @@ informe **0** no campo de reserva e compare com CPA/ROAS de equilíbrio.
 
 Os custos continuam apenas na memória da interface; nenhuma persistência,
 migration ou chamada à Meta/Nuvemshop foi adicionada.
+
+### PR 019.2 — Terminologia do lucro desejado
+
+A interface apresenta o campo econômico anteriormente chamado **Resultado mínimo a preservar** como **Lucro desejado por venda**. Ele significa quanto se deseja conservar **após os custos variáveis e a publicidade**, antes dos custos fixos não modelados. Evitamos denominá-lo “lucro bruto” porque, na terminologia contábil, esse conceito usualmente é apurado antes das despesas de publicidade e não equivale ao valor deste campo.
+
+É uma alteração exclusiva de nomenclatura e explicação da interface. O parâmetro interno `desiredProfit`, todas as fórmulas, validações, persistência inexistente e integrações continuam inalterados.
+
+### Atualização do PR 019.2 — Lucro desejado em percentual
+
+Apenas o campo **Lucro desejado por venda** passa a aceitar um **percentual do preço de venda** (17% pré-preenchido, editável, inclusive 0%). O valor em reais é **calculado automaticamente**, com arredondamento para centavos, e apresentado ao lado. Ao alterar o preço, o lucro calculado acompanha a nova base de cálculo; editar os custos altera a margem e os objetivos, mas não o percentual de lucro.
+
+O campo percentual aceita vírgula ou ponto decimal com até duas casas, entre 0% e 100%. Entrada inválida ou vazia bloqueia as metas e apresenta erro; nenhuma entrada é convertida silenciosamente em zero. A aplicação continua considerando todos os campos de custos obrigatórios, com 0 explícito para custos não aplicáveis. O cálculo existente de CPA e ROAS **não muda**: o valor derivado em reais alimenta o parâmetro interno `desiredProfit`.
+
+Com preço de R$ 199 e custos variáveis de R$ 111,91: 17% = R$ 33,83 de lucro desejado; CPA-alvo máximo de R$ 53,26; ROAS-alvo mínimo de 3,74x. São metas por unidade vendida, antes dos custos fixos não informados. A calculadora não persiste dados nem altera campanhas na Meta.
