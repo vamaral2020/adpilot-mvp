@@ -35,9 +35,22 @@ async function handle(request:NextRequest,context:Context,method:string) {
   const isWrite=method!=="GET";
   if(isWrite) {
     const origin=request.headers.get("origin");
-    // Reject cross-origin writes and missing Origin rather than weakening
-    // Basic-auth cross-site request protections.
-    if(origin!==new URL(request.url).origin)
+    const host=request.headers.get("host");
+    const forwarded=request.headers.get("x-forwarded-proto");
+    // Behind Docker port mapping, Next's internal request.url may use port
+    // 3000 while the browser reaches port 13000. Match the actual Host header
+    // that the client requested, not Next's reconstructed internal URL.
+    // A different-origin or missing-Origin write remains forbidden.
+    let sameOrigin=false;
+    try {
+      const parsed=origin?new URL(origin):null;
+      const scheme=forwarded==="https"?"https:":forwarded==="http"?"http:"
+        :new URL(request.url).protocol;
+      sameOrigin=Boolean(parsed && host && parsed.host===host
+        && parsed.protocol===scheme && !parsed.username && !parsed.password
+        && parsed.pathname==="/" && !parsed.search && !parsed.hash);
+    } catch { sameOrigin=false; }
+    if(!sameOrigin)
       return NextResponse.json({error:"Origem inválida."},{status:403});
   }
   const base=process.env.INTERNAL_API_URL??"http://localhost:18080";
