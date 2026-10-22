@@ -593,3 +593,30 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
 @media print{.calcProfitCalculated{background:#e6f5ef!important;border-color:#92bcae!important}
   .calcProfitCalculated>span,.calcProfitCalculated output,.calcProfitCalculated small{
     color:#174936!important}}
+
+
+/* PR 020 — source collection window receipts, not claims of finalized revenue. */
+.historyCoverage{margin-top:20px;border-color:#315875}
+.historyCoverageExplanation{margin:16px 0;line-height:1.65;font-size:13px;color:#bed5ed}
+.historyCoverageMetrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:17px 0}
+.historyCoverageMetrics>div{display:flex;flex-direction:column;gap:10px;padding:15px;
+  border:1px solid #37516a;border-radius:10px;background:#172b40;min-width:0}
+.historyCoverageMetrics small{color:#a4bfd7;font-size:11px;line-height:1.4}
+.historyCoverageMetrics strong{font-size:22px;color:#e7f4ff;font-variant-numeric:tabular-nums}
+.historyCoverageDetails{border:1px solid #36516b;border-radius:10px;padding:13px 15px;margin-top:12px}
+.historyCoverageDetails summary{font-size:12px;color:#c0dbf6;font-weight:750;cursor:pointer}
+.historyCoverageDetails summary:focus-visible{outline:2px solid #92bcfc;outline-offset:4px}
+.historyCoverageDetails p{font-size:11px;color:#afc6dc;line-height:1.7;
+  overflow-wrap:anywhere;margin:12px 0 0}
+.historyCoverageShop{padding:14px 0 0;margin:15px 0 8px;border-top:1px solid #30475f;
+  color:#b0c6dc;font-size:12px;line-height:1.7}
+.historyCoverageShop strong{color:#d8ebf9}
+@media(max-width:800px){.historyCoverageMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:500px){.historyCoverageMetrics{grid-template-columns:1fr 1fr}
+  .historyCoverageMetrics>div{padding:11px}.historyCoverageMetrics strong{font-size:19px}}
+@media print{.historyCoverage{background:#fff!important;border-color:#c4d4e0!important}
+  .historyCoverageExplanation,.historyCoverageShop,.historyCoverageMetrics small{
+    color:#314c65!important}
+  .historyCoverageMetrics>div{background:#f2f6fa!important;border-color:#ccd9e5!important}
+  .historyCoverageMetrics strong{color:#1d3952!important}
+  .historyCoverageDetails{display:none!important}}
