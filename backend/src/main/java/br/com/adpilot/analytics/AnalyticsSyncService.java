@@ -84,7 +84,7 @@ public class AnalyticsSyncService {
             Instant cursor = store.cursor(provider,resource);
             var result = collector.orders(cursor,now);
             stage = OrderSyncFailureCodes.Stage.PERSIST;
-            store.saveOrders(runId,result.rows(),result.upper(),result.fetched());
+            store.saveOrders(runId,result.rows(),result.lower(),result.upper(),result.fetched());
             return new ProviderResult(provider,resource,"SUCCEEDED",result.fetched(),
                     result.rows().size(),null);
         } catch (RuntimeException e) {

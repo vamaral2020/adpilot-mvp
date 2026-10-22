@@ -2,7 +2,45 @@ export type MetaDay = { date: string; currency: string; spend: number; impressio
 export type StoreDay = { date: string; currency: string; paidOrders: number; paidRevenue: number };
 export type CampaignResult = { accountId: string; campaignId: string; name: string; currency: string; spend: number; impressions: number; clicks: number; attributedPurchases: number; attributedRevenue: number };
 export type SourceState = { provider: string; resource: string; lastStatus: string | null; lastSuccess: string | null; cursorAt: string | null };
-export type AnalyticsHistory = { since: string; until: string; meta: MetaDay[]; store: StoreDay[]; campaigns: CampaignResult[]; sources: SourceState[]; complete: boolean; warnings: string[] };
+/** A successful query window is an audit receipt, not a guarantee of final attributed outcomes. */
+export type MetaCoverage = {
+  status: "NO_COLLECTION_RECEIPT" | "PARTIAL_WINDOWS" | "WINDOWS_OBSERVED" | "MULTIPLE_ACCOUNTS";
+  accountId: string | null;
+  requestedDays: number;
+  observedDays: number;
+  datesWithRows: number;
+  datesWithoutRows: number;
+  unobservedDates: string[];
+  observedWithoutRows: string[];
+  lastSuccess: string | null;
+};
+export type StoreCoverage = {
+  status: "UPDATED_AT_ONLY_NOT_PAID_DATE";
+  successfulUpdateWindows: number;
+  lastSuccess: string | null;
+};
+export type HistoryCoverage = { meta: MetaCoverage; store: StoreCoverage };
+export type AnalyticsHistory = { since: string; until: string; meta: MetaDay[]; store: StoreDay[];
+  campaigns: CampaignResult[]; sources: SourceState[]; complete: boolean; warnings: string[];
+  coverage?: HistoryCoverage | null;
+};
+
+/** Display status without claiming that a successful collection proves final outcomes. */
+export function coverageMessage(coverage?: HistoryCoverage | null) {
+  if (!coverage) return "Não há diagnóstico de janelas de coleta disponível.";
+  switch (coverage.meta.status) {
+    case "NO_COLLECTION_RECEIPT":
+      return "Não há comprovantes de janelas de coleta Meta para este período. Registros antigos podem existir, mas não são prova de cobertura.";
+    case "PARTIAL_WINDOWS":
+      return "A Meta foi consultada com sucesso em apenas parte do período. Os demais dias não possuem coleta comprovada.";
+    case "WINDOWS_OBSERVED":
+      return "Todos os dias foram incluídos em consultas Meta concluídas. Isso não comprova atribuição definitiva nem vendas iguais a zero nos dias sem registros.";
+    case "MULTIPLE_ACCOUNTS":
+      return "Foram identificadas coletas de contas Meta diferentes. A cobertura combinada não é considerada verificável.";
+    default:
+      return "Não foi possível classificar a cobertura da Meta.";
+  }
+}
 
 export function sums(rows: { currency: string; value: number }[]): { currency: string; value: number } | null {
   const currencies = new Set(rows.map(row => row.currency));

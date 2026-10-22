@@ -49,7 +49,7 @@ class AnalyticsSyncServiceTest {
         assertEquals("SUCCEEDED",report.results().get(2).status());
         assertEquals("INSIGHTS_DAILY",report.results().get(2).resource());
         verify(store).failed(1L,"ORDER_COLLECTION_FAILED");
-        verify(store,never()).saveOrders(anyLong(),anyList(),any(),anyInt());
+        verify(store,never()).saveOrders(anyLong(),anyList(),any(),any(),anyInt());
         verify(store).saveCampaigns(eq(3L),anyList(),any(),eq(0));
         verify(store).saveMeta(eq(2L),anyList(),eq("123456"),any(),any(),any(),eq(0));
     }
@@ -71,7 +71,7 @@ class AnalyticsSyncServiceTest {
         assertEquals("CAMPAIGNS",report.results().get(1).resource());
         assertEquals("SUCCEEDED",report.results().get(2).status());
         assertEquals("INSIGHTS_DAILY",report.results().get(2).resource());
-        verify(store,never()).saveOrders(anyLong(),anyList(),any(),anyInt());
+        verify(store,never()).saveOrders(anyLong(),anyList(),any(),any(),anyInt());
     }
     @Test void providerHttpFailureIsCategorizedWithoutLeakingProviderPayload() {
         var store=mock(AnalyticsSyncStore.class);
@@ -95,7 +95,7 @@ class AnalyticsSyncServiceTest {
 
         assertEquals("ORDER_API_HTTP_422",report.results().getFirst().code());
         verify(store).failed(9L,"ORDER_API_HTTP_422");
-        verify(store,never()).saveOrders(anyLong(),anyList(),any(),anyInt());
+        verify(store,never()).saveOrders(anyLong(),anyList(),any(),any(),anyInt());
         assertFalse(report.toString().contains("potentially-sensitive-upstream-message"));
     }
 
@@ -111,7 +111,7 @@ class AnalyticsSyncServiceTest {
         when(collector.orders(any(),any())).thenReturn(new AnalyticsCollector.OrderWindow(
                 List.of(),0,upper.minusSeconds(600),upper));
         doThrow(new org.springframework.dao.DataIntegrityViolationException("sensitive-db-detail"))
-                .when(store).saveOrders(eq(11L),anyList(),eq(upper),eq(0));
+                .when(store).saveOrders(eq(11L),anyList(),eq(upper.minusSeconds(600)),eq(upper),eq(0));
         when(collector.campaigns(any())).thenReturn(new AnalyticsCollector.CampaignWindow(
                 List.of(),0,"123456",Instant.now()));
         when(collector.insights(any())).thenReturn(new AnalyticsCollector.MetaWindow(

@@ -222,7 +222,7 @@ export default function Calculator() {
           <button type="button" className="calcReset" onClick={()=>{
             setForm({...EMPTY_COST_FORM});setDesiredProfitPercent("17");
             setTouched({});setPercentTouched(false);setCopyState("idle");
-          }}>Limpar valores</button>
+          }}>Restaurar valores iniciais</button>
         </div>
       </section>
 

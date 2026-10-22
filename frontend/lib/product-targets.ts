@@ -54,12 +54,13 @@ export const EMPTY_COST_FORM: CostForm = {
   price: "199", // sample price; always editable
   productCost: "",
   desiredProfit: "",
-  taxPercent: "",
-  paymentPercent: "",
-  paymentFixed: "",
-  packaging: "",
-  shippingSubsidy: "",
-  otherCosts: "",
+  // Initial editable examples agreed for the store; no values are persisted.
+  taxPercent: "4",
+  paymentPercent: "5",
+  paymentFixed: "2",
+  packaging: "2",
+  shippingSubsidy: "3",
+  otherCosts: "10",
 };
 
 const MAX_AMOUNT_CENTS = 100_000_000; // R$ 1,000,000.00 per field

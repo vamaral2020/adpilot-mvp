@@ -850,3 +850,79 @@ Apenas o campo **Lucro desejado por venda** passa a aceitar um **percentual do p
 O campo percentual aceita vírgula ou ponto decimal com até duas casas, entre 0% e 100%. Entrada inválida ou vazia bloqueia as metas e apresenta erro; nenhuma entrada é convertida silenciosamente em zero. A aplicação continua considerando todos os campos de custos obrigatórios, com 0 explícito para custos não aplicáveis. O cálculo existente de CPA e ROAS **não muda**: o valor derivado em reais alimenta o parâmetro interno `desiredProfit`.
 
 Com preço de R$ 199 e custos variáveis de R$ 111,91: 17% = R$ 33,83 de lucro desejado; CPA-alvo máximo de R$ 53,26; ROAS-alvo mínimo de 3,74x. São metas por unidade vendida, antes dos custos fixos não informados. A calculadora não persiste dados nem altera campanhas na Meta.
+
+
+## PR 020 — Qualidade e auditoria da cobertura histórica
+
+A migration **Flyway V5** cria `analytics_sync_window`. Esta tabela registra,
+**na mesma transação que a gravação dos dados e a confirmação do checkpoint**,
+os filtros temporais que uma coleta percorreu integralmente.
+
+- **Meta Ads / INSIGHTS_DAILY:** conta de anúncios, `meta_from` e
+  `meta_through` (datas da consulta por dia Meta). O coletor já rejeita
+  paginação truncada e cursores inválidos, portanto apenas janelas de
+  consultas concluídas são registradas.
+- **Nuvemshop / ORDERS:** `shop_updated_from` e `shop_updated_through`,
+  horários UTC efetivamente usados no filtro `updated_at`. **Isso não
+  comprova** que foram capturadas todas as vendas segundo `paid_at`.
+- Os registros de sincronização anteriores à V5 **não são reinterpretados
+  retroativamente como janelas completas**. Janelas de runs `FAILED`,
+  `RUNNING` ou `INCOMPLETE` nunca contribuem para o diagnóstico.
+- A consulta de histórico é somente leitura, autenticada, filtrada pelo
+  workspace, com período máximo de 90 dias. Não dispara uma coleta externa.
+
+### Campos novos em /api/v1/analytics/history
+
+O endpoint preserva `complete=false` e todos os campos existentes;
+acrescenta `coverage.meta` e `coverage.store`:
+
+- `coverage.meta.status`: `NO_COLLECTION_RECEIPT`,
+  `PARTIAL_WINDOWS`, `WINDOWS_OBSERVED` ou `MULTIPLE_ACCOUNTS`.
+- `requestedDays` / `observedDays`: dias pedidos / incluídos em
+  janelas de consultas Meta **concluídas**; união das janelas, sem dupla contagem.
+- `datesWithRows`: dias com linhas de dados Meta persistidas;
+  `datesWithoutRows` e `observedWithoutRows`: dias consultados sem
+  linhas Meta persistidas. **Isso não significa zero investimento ou vendas.**
+- `unobservedDates`: dias para os quais não existe comprovante de coleta
+  Meta nessa versão. Mesmo que existam snapshots legados, a cobertura
+  **não** é inferida deles.
+- `coverage.store.status=UPDATED_AT_ONLY_NOT_PAID_DATE` sempre:
+  o total de janelas de atualização não prova cobertura da data do pagamento.
+- A observação de **todas** as datas Meta não prova a exatidão/finalidade
+  da atribuição, nem a conciliação com pedidos da Nuvemshop, nem
+  equivalência de fusos. O histórico agregado continua **não verificado**.
+
+Exemplo de verificação segura pós-implantação:
+
+```bash
+curl -sS -u admin \
+  'http://localhost:18080/api/v1/analytics/history?since=2026-10-14&until=2026-10-20' |
+  jq '{complete,coverage,warnings}'
+```
+
+Após aplicar V5, não há cobertura retroativa. Uma nova coleta **opcional,
+local e supervisionada** (com `ADPILOT_ANALYTICS_SYNC_ENABLED=true`)
+poderá registrar as janelas da Meta e da Nuvemshop. O frontend apresenta
+essas diferenças na seção **O quanto do período foi consultado?** do Histórico.
+
+### Custos iniciais da calculadora
+
+O mesmo PR incorpora os valores iniciais **editáveis** combinados:
+impostos `4%`, taxa de pagamento `5%`, tarifa fixa `R$ 2`,
+frete subsidiado `R$ 3`, embalagem `R$ 2` e outros
+custos variáveis `R$ 10`. O preço continua ilustrativo (`R$ 199`);
+o custo da mercadoria continua obrigatório e em branco; o lucro
+desejado mantém `17%`, editável. **Restaurar valores iniciais**
+reaplica esses valores e não salva dados.
+
+### Critérios de aceitação
+
+- Flyway V5 aplicada e consulta de histórico com `coverage` sem erros.
+- Sem novas coletas, snapshots antigos não criam falsa cobertura.
+- Uma janela Meta concluída, mesmo sem linhas, é distinguível de
+  uma data não coletada; o resultado comercial não é arbitrariamente zero.
+- Janelas `FAILED` não contam para cobertura e períodos sobrepostos
+  contam cada data uma única vez.
+- Fonte Nuvemshop continua expressamente não auditada por data de pagamento.
+- Sem alterações no motor de recomendações, Meta Ads ou Nuvemshop
+  externos, políticas de OAuth ou escrita em anúncios.
