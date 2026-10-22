@@ -6,10 +6,9 @@ import br.com.adpilot.analytics.RecommendationModels.Stored;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
-
-
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
