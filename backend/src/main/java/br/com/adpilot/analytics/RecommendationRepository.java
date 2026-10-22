@@ -99,7 +99,8 @@ public class RecommendationRepository {
                     Timestamp.from(report.generatedAt()), evaluationId, advice.accountId(),
                     advice.campaignId(), advice.campaignName(), advice.currency(),
                     advice.ruleVersion(), advice.actionCode(), advice.priority(),
-                    advice.accountId()==null || advice.campaignId()==null ? null :
+                    advice.accountId()==null || advice.campaignId()==null ||
+                    (report.targetCpa()!=null && report.targetRoas()!=null) ? null :
                         linked.get(advice.accountId()+":"+advice.campaignId()));
             for (var metric : advice.evidence()) {
                 jdbc.update("""
