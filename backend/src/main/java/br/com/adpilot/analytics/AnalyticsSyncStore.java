@@ -59,7 +59,7 @@ public class AnalyticsSyncStore {
 
     @Transactional
     public void saveOrders(long runId, List<AnalyticsRecords.Order> rows,
-            Instant cursor, int fetched) {
+            Instant updatedFrom, Instant cursor, int fetched) {
         for (var row : rows) {
             jdbc.update("""
                     INSERT INTO analytics_order_snapshot
@@ -84,6 +84,12 @@ public class AnalyticsSyncStore {
                     timestamp(row.paidAt()),row.paidDateSource(),timestamp(row.createdAt()),
                     timestamp(row.updatedAt()),row.total(),row.currency(),row.eligibleSale());
         }
+        // Store updates are queried by updated_at. This cannot verify paid_at-day coverage.
+        jdbc.update("""
+                INSERT INTO analytics_sync_window
+                (run_id,workspace_id,provider,resource,shop_updated_from,shop_updated_through)
+                VALUES (?,?,'NUVEMSHOP','ORDERS',?,?)
+                """, runId,WORKSPACE,Timestamp.from(updatedFrom),Timestamp.from(cursor));
         markSuccess(runId, "NUVEMSHOP", "ORDERS", cursor, fetched, rows.size());
     }
 
@@ -129,6 +135,12 @@ public class AnalyticsSyncStore {
                     row.spend(),row.impressions(),row.clicks(),row.purchases(),
                     row.attributedRevenue(),row.currency());
         }
+        // Only fully fetched windows are persisted, atomically with their rows and state.
+        jdbc.update("""
+                INSERT INTO analytics_sync_window
+                (run_id,workspace_id,provider,resource,account_id,meta_from,meta_through)
+                VALUES (?,?,'META_ADS','INSIGHTS_DAILY',?,?,?)
+                """,runId,WORKSPACE,accountId,from,through);
         markSuccess(runId,"META_ADS","INSIGHTS_DAILY",cursor,fetched,rows.size());
     }
 
