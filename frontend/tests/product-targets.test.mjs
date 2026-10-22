@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   calculateProductTargets,
   calculateProductContribution,
+  desiredProfitFromPercentage,
   EMPTY_COST_FORM,
   PRICE_FIELDS,
   COST_FIELDS,
@@ -187,5 +188,79 @@ test("fees and taxes apply to gross selling price, not margin", () => {
     assert.equal(r.result.breakdown.tax,1990);
     assert.equal(r.result.breakdown.paymentPercent,995);
     assert.equal(r.result.contributionCents,16915);
+  }
+});
+
+
+test("17% of R$ 199 automatically becomes R$ 33,83 without changing other costs", () => {
+  const profit=desiredProfitFromPercentage("199","17");
+  assert.equal(profit.ok,true);
+  if(!profit.ok)return;
+  assert.equal(profit.amountCents,3383);
+  assert.equal(profit.amountInput,"33.83");
+  const costs=complete({
+    price:"199",productCost:"78",taxPercent:"4",paymentPercent:"5",
+    paymentFixed:"1",shippingSubsidy:"3",packaging:"2",otherCosts:"10",
+    desiredProfit:profit.amountInput,
+  });
+  const calc=calculateProductTargets(costs);
+  assert.equal(calc.ok,true);
+  if(!calc.ok)return;
+  assert.equal(calc.result.contributionCents,8709);
+  assert.equal(calc.result.desiredProfitCents,3383);
+  assert.equal(calc.result.targetCpaCents,5326);
+  assert.equal(calc.result.targetRoas,3.74);
+});
+
+test("only profit percentage drives the computed profit; price changes update its value", () => {
+  const a=desiredProfitFromPercentage("199","17");
+  const b=desiredProfitFromPercentage("299","17");
+  const c=desiredProfitFromPercentage("199","17,50");
+  const d=desiredProfitFromPercentage("199","17.50");
+  assert.equal(a.ok,true);assert.equal(b.ok,true);
+  assert.deepEqual(c,d);
+  if(a.ok && b.ok && c.ok) {
+    assert.equal(a.amountCents,3383);
+    assert.equal(b.amountCents,5083);
+    assert.equal(c.amountCents,3483);
+  }
+});
+
+test("profit percent accepts explicit zero and rounds to cents", () => {
+  const zero=desiredProfitFromPercentage("199,99","0");
+  const result=desiredProfitFromPercentage("199,99","17");
+  assert.equal(zero.ok,true);
+  assert.equal(result.ok,true);
+  if(zero.ok && result.ok){
+    assert.equal(zero.amountInput,"0.00");
+    assert.equal(result.amountCents,3400);
+    assert.equal(result.amountInput,"34.00");
+  }
+});
+
+test("invalid profit percentage is rejected and never silently treated as zero", () => {
+  for(const raw of [""," ","-1","100,01","17,123","1.000,00","1e2","NaN","17%"]) {
+    const r=desiredProfitFromPercentage("199",raw);
+    assert.equal(r.ok,false,raw);
+    if(!r.ok) assert.equal(r.field,"percent",raw);
+  }
+  for(const price of ["","0","-1","1.000,00","199,999"]) {
+    const r=desiredProfitFromPercentage(price,"17");
+    assert.equal(r.ok,false,price);
+    if(!r.ok) assert.equal(r.field,"price",price);
+  }
+});
+
+test("goal remains unfeasible if 17% profit exceeds the actual contribution", () => {
+  const desired=desiredProfitFromPercentage("199","17");
+  assert.equal(desired.ok,true);
+  if(!desired.ok)return;
+  const costs=complete({price:"199",productCost:"180",desiredProfit:desired.amountInput});
+  const result=calculateProductTargets(costs);
+  assert.equal(result.ok,true);
+  if(result.ok){
+    assert.equal(result.result.status,"GOAL_NOT_FEASIBLE");
+    assert.equal(result.result.targetCpaCents,null);
+    assert.equal(result.result.targetRoas,null);
   }
 });
