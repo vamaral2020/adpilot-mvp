@@ -655,3 +655,46 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
   .recommendationQualityPanel h2,.recommendationQualityGrid strong,
   .recommendationQualityPanel p{color:#183048!important}
   .recommendationQualityGrid>div{background:#f1f7fc!important;border-color:#c9d8e3!important}}
+
+
+/* PR 022 — immutable product economics and deliberate campaign associations. */
+.calcSavePlan{margin-top:20px;padding:19px;border:1px solid #375c7a;
+  border-radius:13px;background:#162d42;display:flex;flex-direction:column;gap:10px}
+.calcSavePlan h3{font-size:16px;color:#e9f4ff;margin:0}
+.calcSavePlan p,.calcSavePlan small{font-size:12px;color:#b7cfe2;line-height:1.65;margin:0}
+.calcSavePlan label{font-size:12px;color:#d1e4f7;font-weight:700}
+.calcSavePlan input{padding:11px 12px;border-radius:8px;border:1px solid #4a6883;
+  background:#0e2235;color:#e9f6ff;font:inherit;width:100%}
+.calcSaveActions{display:flex;gap:13px;flex-wrap:wrap;align-items:center}
+.calcSaveActions a{color:#9bd6ec;font-size:12px;text-decoration:underline}
+.calcSavePlan button{margin:0;min-height:42px}
+.planCatalog{margin:21px 0}
+.planCatalog .historySectionHead a{color:#9cd5f4}
+.planVersion{display:block;margin-top:6px;font-size:10px;color:#97bbd4}
+.planCampaignList{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr));gap:14px;margin:14px 0}
+.planCampaign{padding:17px;border:1px solid #365471;border-radius:12px;
+  background:#172e44;min-width:0;display:flex;flex-direction:column;gap:12px}
+.planCampaignHead strong{display:block;font-size:15px;color:#f2f7ff;overflow-wrap:anywhere}
+.planCampaignHead small{display:block;margin-top:6px;font-size:11px;color:#9ebbd5;
+  overflow-wrap:anywhere}
+.planCampaign .planLinked{padding:10px 12px;border-left:3px solid #53b59d;
+  background:#1d3b44;color:#c3f0e0;font-size:11px;line-height:1.65;margin:0}
+.planCampaign>label{font-size:12px;font-weight:700;color:#d5e9f8}
+.planCampaign select{width:100%;min-width:0;padding:11px 8px;border:1px solid #527392;
+  background:#10273a;color:#e3f3ff;border-radius:8px;font-size:12px}
+.planConfirmation{display:flex;gap:9px;align-items:flex-start;line-height:1.5;
+  font-weight:500!important;color:#bcd5e7!important}
+.planConfirmation input{accent-color:#65c5a6;margin:4px 0 0;flex:0 0 auto}
+.planActions{display:flex;gap:9px;flex-wrap:wrap}
+.planActions button{background:#24625f;border:1px solid #62bca5;color:#e7fff3;
+  border-radius:9px;padding:11px 15px;font-size:12px;font-weight:700;cursor:pointer}
+.planActions button.planUnlink{background:#29394e;border-color:#60768b}
+.planActions button:disabled{opacity:.48;cursor:not-allowed}
+.planActions button:focus-visible,.planCampaign select:focus-visible,.calcSavePlan input:focus-visible{
+  outline:2px solid #8bcaff;outline-offset:3px}
+.recommendationPlanEvidence{margin:12px 0;padding:14px;border-left:3px solid #4bb398;
+  border-radius:0 8px 8px 0;background:#1c3a43;color:#c1ecdd;
+  font-size:12px;line-height:1.7}
+.recommendationPlanEvidence strong{color:#e6fff4}
+@media(max-width:600px){.planCampaignList{grid-template-columns:1fr}
+  .calcSavePlan{padding:15px}}
