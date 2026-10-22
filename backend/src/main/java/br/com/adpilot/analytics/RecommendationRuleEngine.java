@@ -4,6 +4,7 @@ import br.com.adpilot.analytics.RecommendationModels.Advice;
 import br.com.adpilot.analytics.RecommendationModels.DataQuality;
 import br.com.adpilot.analytics.RecommendationModels.DailyCampaign;
 import br.com.adpilot.analytics.RecommendationModels.Metric;
+import br.com.adpilot.analytics.RecommendationModels.LinkedGoal;
 import br.com.adpilot.analytics.RecommendationModels.Report;
 import br.com.adpilot.analytics.RecommendationModels.Request;
 import br.com.adpilot.analytics.RecommendationModels.SyncState;
@@ -40,8 +41,27 @@ public class RecommendationRuleEngine {
     private static final String LIMITATION =
             "Meta attributed, not reconciled with Nuvemshop; coverage unverified";
 
+    /** Compatibility entry point for read-only evaluations with no linked goals. */
     public Report evaluate(Request request, List<DailyCampaign> data,
             SyncState sync, Instant generatedAt, DataQuality quality) {
+        return evaluate(request,data,sync,generatedAt,quality,List.of());
+    }
+
+    public Report evaluate(Request request, List<DailyCampaign> data,
+            SyncState sync, Instant generatedAt, DataQuality quality,
+            List<LinkedGoal> linkedGoals) {
+        var keys=new HashSet<String>();
+        for(var row:data) if("BRL".equals(row.currency()))
+            keys.add(row.accountId()+":"+row.campaignId());
+        var accepted=new LinkedHashMap<String,LinkedGoal>();
+        for(var goal:linkedGoals) {
+            String key=goal.accountId()+":"+goal.campaignId();
+            if(keys.contains(key) && goal.targetCpa()!=null && goal.targetRoas()!=null
+                    && goal.targetCpa().signum()>0 && goal.targetRoas().signum()>0
+                    && goal.targetRoas().compareTo(new BigDecimal("100"))<=0)
+                accepted.put(key,goal);
+        }
+        List<LinkedGoal> appliedGoals=List.copyOf(accepted.values());
         var warnings = new ArrayList<String>();
         warnings.add("HISTORICAL_COVERAGE_NOT_VERIFIED");
         warnings.add("META_ATTRIBUTION_CAN_CHANGE");
@@ -64,8 +84,14 @@ public class RecommendationRuleEngine {
             warnings.add("META_FETCHED_DAYS_WITHOUT_REPORTED_ROWS");
         if (!quality.analysisEligible())
             warnings.add("RECOMMENDATIONS_DATA_QUALITY_LIMITED");
-        if (request.targetRoas() == null && request.targetCpa() == null)
+        boolean noManualGoals=request.targetRoas()==null && request.targetCpa()==null;
+        boolean missingGoals=data.isEmpty() || data.stream().anyMatch(r ->
+                !accepted.containsKey(r.accountId()+":"+r.campaignId()));
+        if(noManualGoals && missingGoals)
             warnings.add("BUSINESS_GOALS_NOT_CONFIGURED");
+        if(!appliedGoals.isEmpty()) warnings.add("MANUALLY_LINKED_PRODUCT_GOALS");
+        if(!appliedGoals.isEmpty() && !noManualGoals)
+            warnings.add("MANUAL_TARGET_OVERRIDES_LINKED_GOALS");
 
         var advice = new ArrayList<Advice>();
         if (data.isEmpty()) {
@@ -81,11 +107,11 @@ public class RecommendationRuleEngine {
                 grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(day);
             }
             for (var rows : grouped.values()) {
-                advice.addAll(forCampaign(request, rows, quality));
+                advice.addAll(forCampaign(request, rows, quality,accepted));
             }
         }
 
-        if (request.targetRoas() == null && request.targetCpa() == null) {
+        if (noManualGoals && missingGoals) {
             advice.add(advice("CONFIGURE_GOALS",null,null,null,null,"LOW",
                     "INSUFFICIENT","CONFIGURE_TARGETS","Configure metas comerciais",
                     "Informe ROAS mínimo e/ou CPA máximo para comparar desempenho com "
@@ -94,16 +120,22 @@ public class RecommendationRuleEngine {
         }
         return new Report(request.since(),request.until(),request.targetRoas(),
                 request.targetCpa(),false,generatedAt,sync.lastStatus(),sync.lastSuccess(),
-                List.copyOf(warnings),List.copyOf(advice),quality);
+                List.copyOf(warnings),List.copyOf(advice),quality,appliedGoals);
     }
 
     private List<Advice> forCampaign(Request request, List<DailyCampaign> input,
-            DataQuality quality) {
+            DataQuality quality,Map<String,LinkedGoal> goals) {
         var rows = input.stream().sorted(Comparator.comparing(DailyCampaign::day)).toList();
         var first = rows.getFirst();
         String account = first.accountId(), campaign = first.campaignId();
         String name = first.campaignName();
         String currency = first.currency();
+        LinkedGoal linked="BRL".equals(currency) ? goals.get(account+":"+campaign) : null;
+        Request effectiveRequest=new Request(request.since(),request.until(),
+                request.targetRoas()!=null ? request.targetRoas()
+                        : linked==null ? null : linked.targetRoas(),
+                request.targetCpa()!=null ? request.targetCpa()
+                        : linked==null ? null : linked.targetCpa());
         Set<LocalDate> dates = new HashSet<>();
         for (DailyCampaign row : rows) {
             if (!Objects.equals(currency,row.currency()) || !dates.add(row.day())
@@ -131,9 +163,13 @@ public class RecommendationRuleEngine {
                 ratio(BigDecimal.valueOf(clicks).multiply(BigDecimal.valueOf(100)),
                         BigDecimal.valueOf(impressions));
         BigDecimal cpc = ratio(spend,BigDecimal.valueOf(clicks));
-        var evidence = List.of(metric("SPEND",spend),metric("ATTRIBUTED_PURCHASES",purchases),
+        List<Metric> evidence = List.of(metric("SPEND",spend),metric("ATTRIBUTED_PURCHASES",purchases),
                 metric("ATTRIBUTED_REVENUE",revenue),metric("IMPRESSIONS",impressions),
                 metric("CLICKS",clicks),metric("OBSERVED_DAYS",dates.size()));
+        if(linked!=null) {
+            evidence=append(evidence,metric("LINKED_GOAL_CPA",linked.targetCpa()),
+                    metric("LINKED_GOAL_ROAS",linked.targetRoas()));
+        }
         var out = new ArrayList<Advice>();
         if (!quality.analysisEligible()) {
             String explanation = switch (quality.status()) {
@@ -191,37 +227,37 @@ public class RecommendationRuleEngine {
                     List.of("HISTORICAL_COVERAGE_NOT_VERIFIED","SMALL_OR_SHORT_SAMPLE")));
         }
 
-        if (quality.analysisEligible() && purchases.signum() == 0 && request.targetCpa() != null &&
-                dates.size() >= 3 && spend.compareTo(request.targetCpa()
+        if (quality.analysisEligible() && purchases.signum() == 0 && effectiveRequest.targetCpa() != null &&
+                dates.size() >= 3 && spend.compareTo(effectiveRequest.targetCpa()
                         .multiply(BigDecimal.valueOf(2))) >= 0) {
             out.add(advice("SPEND_WITHOUT_PURCHASES",account,campaign,name,currency,
                     "MEDIUM","LOW","INVESTIGATE","Investimento sem compras atribuídas",
                     "O gasto excedeu duas vezes o CPA máximo informado e não há compras "
                     + "atribuídas nos registros disponíveis. Verifique o rastreamento, "
                     + "o destino dos anúncios e a janela de atribuição; não pause automaticamente.",
-                    append(evidence,metric("TARGET_CPA",request.targetCpa())),
+                    append(evidence,metric("TARGET_CPA",effectiveRequest.targetCpa())),
                     List.of("ATTRIBUTION_MAY_ARRIVE_LATER","HISTORICAL_COVERAGE_NOT_VERIFIED")));
         }
 
-        if (quality.analysisEligible() && enough && roas != null && request.targetRoas() != null &&
-                roas.compareTo(request.targetRoas()) < 0) {
+        if (quality.analysisEligible() && enough && roas != null && effectiveRequest.targetRoas() != null &&
+                roas.compareTo(effectiveRequest.targetRoas()) < 0) {
             out.add(advice("ROAS_BELOW_TARGET",account,campaign,name,currency,"MEDIUM",
                     confidence,"INVESTIGATE","Retorno atribuído abaixo da meta",
                     "O ROAS atribuído está abaixo do ROAS-alvo informado. "
                     + "Investigue o desempenho antes de investir mais; este dado não "
                     + "demonstra a causa da diferença.",
                     append(evidence,metric("ROAS",roas),
-                            metric("TARGET_ROAS",request.targetRoas())),
+                            metric("TARGET_ROAS",effectiveRequest.targetRoas())),
                     List.of("HISTORICAL_COVERAGE_NOT_VERIFIED","META_ATTRIBUTION_CAN_CHANGE")));
         }
 
-        if (quality.analysisEligible() && enough && cpa != null && request.targetCpa() != null &&
-                cpa.compareTo(request.targetCpa()) > 0) {
+        if (quality.analysisEligible() && enough && cpa != null && effectiveRequest.targetCpa() != null &&
+                cpa.compareTo(effectiveRequest.targetCpa()) > 0) {
             out.add(advice("CPA_ABOVE_TARGET",account,campaign,name,currency,"MEDIUM",
                     confidence,"INVESTIGATE","Custo por compra acima da meta",
                     "O custo por compra atribuída supera o CPA máximo informado. "
                     + "Investigue a eficiência sem presumir problema no criativo ou no público.",
-                    append(evidence,metric("CPA",cpa),metric("TARGET_CPA",request.targetCpa())),
+                    append(evidence,metric("CPA",cpa),metric("TARGET_CPA",effectiveRequest.targetCpa())),
                     List.of("HISTORICAL_COVERAGE_NOT_VERIFIED","META_ATTRIBUTION_CAN_CHANGE")));
         }
 
@@ -264,11 +300,11 @@ public class RecommendationRuleEngine {
             }
         }
 
-        boolean goalsPresent = request.targetRoas() != null || request.targetCpa() != null;
-        boolean goalsMet = (request.targetRoas() == null ||
-                roas != null && roas.compareTo(request.targetRoas()) >= 0)
-                && (request.targetCpa() == null ||
-                cpa != null && cpa.compareTo(request.targetCpa()) <= 0);
+        boolean goalsPresent = effectiveRequest.targetRoas() != null || effectiveRequest.targetCpa() != null;
+        boolean goalsMet = (effectiveRequest.targetRoas() == null ||
+                roas != null && roas.compareTo(effectiveRequest.targetRoas()) >= 0)
+                && (effectiveRequest.targetCpa() == null ||
+                cpa != null && cpa.compareTo(effectiveRequest.targetCpa()) <= 0);
         if (quality.analysisEligible() && enough && goalsPresent && goalsMet) {
             boolean candidate = purchases.compareTo(TEN) >= 0;
             out.add(advice(candidate ? "FAVORABLE_PERFORMANCE" : "WITHIN_TARGETS",
