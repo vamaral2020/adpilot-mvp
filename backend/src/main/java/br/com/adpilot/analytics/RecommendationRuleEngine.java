@@ -1,6 +1,7 @@
 package br.com.adpilot.analytics;
 
 import br.com.adpilot.analytics.RecommendationModels.Advice;
+import br.com.adpilot.analytics.RecommendationModels.DataQuality;
 import br.com.adpilot.analytics.RecommendationModels.DailyCampaign;
 import br.com.adpilot.analytics.RecommendationModels.Metric;
 import br.com.adpilot.analytics.RecommendationModels.Report;
@@ -10,6 +11,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -23,13 +25,13 @@ import java.util.HashSet;
 import org.springframework.stereotype.Component;
 
 /**
- * PR 017 version 1: deterministic, explainable, advisory-only rules.
+ * Deterministic, explainable, advisory-only rules, now gated by collection quality.
  * No action code in this engine authorizes pausing, scaling or updating Meta ads.
  * Coverage is not verified by a successful sync; all advice stays preliminary.
  */
 @Component
 public class RecommendationRuleEngine {
-    public static final int RULE_VERSION = 1;
+    public static final int RULE_VERSION = 2;
     private static final BigDecimal ZERO = BigDecimal.ZERO;
     private static final BigDecimal FIVE = BigDecimal.valueOf(5);
     private static final BigDecimal TEN = BigDecimal.TEN;
@@ -39,7 +41,7 @@ public class RecommendationRuleEngine {
             "Meta attributed, not reconciled with Nuvemshop; coverage unverified";
 
     public Report evaluate(Request request, List<DailyCampaign> data,
-            SyncState sync, Instant generatedAt) {
+            SyncState sync, Instant generatedAt, DataQuality quality) {
         var warnings = new ArrayList<String>();
         warnings.add("HISTORICAL_COVERAGE_NOT_VERIFIED");
         warnings.add("META_ATTRIBUTION_CAN_CHANGE");
@@ -47,6 +49,21 @@ public class RecommendationRuleEngine {
         warnings.add("NO_AUTOMATIC_AD_CHANGES");
         if (sync.lastSuccess() == null || !"SUCCEEDED".equals(sync.lastStatus()))
             warnings.add("META_SYNC_NOT_CONFIRMED_CURRENT");
+        if (!quality.syncFresh()) warnings.add("META_SYNC_STALE_OR_FAILED");
+        switch (quality.status()) {
+            case "NO_COLLECTION_RECEIPT" -> warnings.add("META_NO_COLLECTION_RECEIPT");
+            case "PARTIAL_WINDOWS" -> warnings.add("META_COLLECTION_WINDOWS_PARTIAL");
+            case "MULTIPLE_ACCOUNTS" -> warnings.add("META_MULTIPLE_ACCOUNTS_UNRESOLVED");
+            case "ACCOUNT_MISMATCH" -> warnings.add("META_COLLECTION_ACCOUNT_MISMATCH");
+            case "CURRENT_DAY_INCOMPLETE" -> { /* handled by the calendar-day guard below */ }
+            default -> { }
+        }
+        if (request.until().equals(generatedAt.atZone(ZoneOffset.UTC).toLocalDate()))
+            warnings.add("CURRENT_DAY_NOT_COMPLETE");
+        if (quality.daysWithoutRows() > 0)
+            warnings.add("META_FETCHED_DAYS_WITHOUT_REPORTED_ROWS");
+        if (!quality.analysisEligible())
+            warnings.add("RECOMMENDATIONS_DATA_QUALITY_LIMITED");
         if (request.targetRoas() == null && request.targetCpa() == null)
             warnings.add("BUSINESS_GOALS_NOT_CONFIGURED");
 
@@ -64,7 +81,7 @@ public class RecommendationRuleEngine {
                 grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(day);
             }
             for (var rows : grouped.values()) {
-                advice.addAll(forCampaign(request, rows));
+                advice.addAll(forCampaign(request, rows, quality));
             }
         }
 
@@ -77,10 +94,11 @@ public class RecommendationRuleEngine {
         }
         return new Report(request.since(),request.until(),request.targetRoas(),
                 request.targetCpa(),false,generatedAt,sync.lastStatus(),sync.lastSuccess(),
-                List.copyOf(warnings),List.copyOf(advice));
+                List.copyOf(warnings),List.copyOf(advice),quality);
     }
 
-    private List<Advice> forCampaign(Request request, List<DailyCampaign> input) {
+    private List<Advice> forCampaign(Request request, List<DailyCampaign> input,
+            DataQuality quality) {
         var rows = input.stream().sorted(Comparator.comparing(DailyCampaign::day)).toList();
         var first = rows.getFirst();
         String account = first.accountId(), campaign = first.campaignId();
@@ -117,6 +135,36 @@ public class RecommendationRuleEngine {
                 metric("ATTRIBUTED_REVENUE",revenue),metric("IMPRESSIONS",impressions),
                 metric("CLICKS",clicks),metric("OBSERVED_DAYS",dates.size()));
         var out = new ArrayList<Advice>();
+        if (!quality.analysisEligible()) {
+            String explanation = switch (quality.status()) {
+                case "NO_COLLECTION_RECEIPT" ->
+                        "Não há comprovante de coleta Meta para todas as datas analisadas. "
+                        + "Os resultados armazenados podem ser parciais; revise a coleta.";
+                case "PARTIAL_WINDOWS" ->
+                        "Foram consultados " + quality.collectedDays() + " de "
+                        + quality.requestedDays() + " dias. Faltam comprovantes para "
+                        + quality.uncollectedDates().size() + " dias; revise a sincronização.";
+                case "ACCOUNT_MISMATCH", "MULTIPLE_ACCOUNTS" ->
+                        "Os comprovantes e os registros de campanhas não correspondem "
+                        + "a uma única conta Meta. Confira a conta antes de comparar métricas.";
+                case "CURRENT_DAY_INCOMPLETE" ->
+                        "O período inclui o dia atual, ainda não consolidado. "
+                        + "Consulte novamente após o encerramento do dia e uma nova coleta.";
+                default -> "As janelas Meta foram consultadas, mas a última sincronização "
+                        + "não está confirmada como recente e bem-sucedida.";
+            };
+            if (!quality.syncFresh() && !"CURRENT_DAY_INCOMPLETE".equals(quality.status()))
+                explanation += " A atualização dos dados também precisa ser confirmada.";
+            out.add(advice("DATA_QUALITY_LIMITED",account,campaign,name,currency,
+                    "MEDIUM","INSUFFICIENT","REVIEW_DATA",
+                    "Verificar qualidade dos dados antes de decidir",
+                    explanation + " Nenhuma alteração de orçamento é recomendada.",
+                    append(evidence,metric("PERIOD_DAYS",quality.requestedDays()),
+                            metric("COLLECTED_DAYS",quality.collectedDays()),
+                            metric("UNCOLLECTED_DAYS",quality.uncollectedDates().size()),
+                            metric("DAYS_WITHOUT_ROWS",quality.daysWithoutRows())),
+                    List.of("META_COLLECTION_NOT_FINAL","HISTORICAL_COVERAGE_NOT_VERIFIED")));
+        }
         long periodDays = ChronoUnit.DAYS.between(request.since(),request.until()) + 1;
         boolean enough = periodDays >= 7 && dates.size() >= 3 && purchases.compareTo(FIVE) >= 0;
         String confidence = enough ? "LOW" : "INSUFFICIENT";
@@ -143,7 +191,7 @@ public class RecommendationRuleEngine {
                     List.of("HISTORICAL_COVERAGE_NOT_VERIFIED","SMALL_OR_SHORT_SAMPLE")));
         }
 
-        if (purchases.signum() == 0 && request.targetCpa() != null &&
+        if (quality.analysisEligible() && purchases.signum() == 0 && request.targetCpa() != null &&
                 dates.size() >= 3 && spend.compareTo(request.targetCpa()
                         .multiply(BigDecimal.valueOf(2))) >= 0) {
             out.add(advice("SPEND_WITHOUT_PURCHASES",account,campaign,name,currency,
@@ -155,7 +203,7 @@ public class RecommendationRuleEngine {
                     List.of("ATTRIBUTION_MAY_ARRIVE_LATER","HISTORICAL_COVERAGE_NOT_VERIFIED")));
         }
 
-        if (enough && roas != null && request.targetRoas() != null &&
+        if (quality.analysisEligible() && enough && roas != null && request.targetRoas() != null &&
                 roas.compareTo(request.targetRoas()) < 0) {
             out.add(advice("ROAS_BELOW_TARGET",account,campaign,name,currency,"MEDIUM",
                     confidence,"INVESTIGATE","Retorno atribuído abaixo da meta",
@@ -167,7 +215,7 @@ public class RecommendationRuleEngine {
                     List.of("HISTORICAL_COVERAGE_NOT_VERIFIED","META_ATTRIBUTION_CAN_CHANGE")));
         }
 
-        if (enough && cpa != null && request.targetCpa() != null &&
+        if (quality.analysisEligible() && enough && cpa != null && request.targetCpa() != null &&
                 cpa.compareTo(request.targetCpa()) > 0) {
             out.add(advice("CPA_ABOVE_TARGET",account,campaign,name,currency,"MEDIUM",
                     confidence,"INVESTIGATE","Custo por compra acima da meta",
@@ -177,7 +225,7 @@ public class RecommendationRuleEngine {
                     List.of("HISTORICAL_COVERAGE_NOT_VERIFIED","META_ATTRIBUTION_CAN_CHANGE")));
         }
 
-        if (periodDays >= 14) {
+        if (quality.analysisEligible() && periodDays >= 14) {
             // Comparable calendar halves. Do not infer zero for missing dates.
             LocalDate secondHalf = request.since().plusDays(periodDays/2);
             var earlier = totals(rows.stream().filter(r->r.day().isBefore(secondHalf)).toList());
@@ -221,7 +269,7 @@ public class RecommendationRuleEngine {
                 roas != null && roas.compareTo(request.targetRoas()) >= 0)
                 && (request.targetCpa() == null ||
                 cpa != null && cpa.compareTo(request.targetCpa()) <= 0);
-        if (enough && goalsPresent && goalsMet) {
+        if (quality.analysisEligible() && enough && goalsPresent && goalsMet) {
             boolean candidate = purchases.compareTo(TEN) >= 0;
             out.add(advice(candidate ? "FAVORABLE_PERFORMANCE" : "WITHIN_TARGETS",
                     account,campaign,name,currency,"LOW","LOW","MONITOR_ONLY",

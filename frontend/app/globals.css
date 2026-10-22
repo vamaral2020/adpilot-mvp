@@ -620,3 +620,38 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
   .historyCoverageMetrics>div{background:#f2f6fa!important;border-color:#ccd9e5!important}
   .historyCoverageMetrics strong{color:#1d3952!important}
   .historyCoverageDetails{display:none!important}}
+
+
+/* PR 021 — clear evidence quality labels, never treat fetch receipts as final sales. */
+.recommendationQualityPanel{border:1px solid #3a5976;border-radius:15px;
+  background:#14283d;padding:22px;margin:18px 0 22px}
+.recommendationQualityPanel h2{color:#e4f1ff;font-size:19px;margin:10px 0}
+.recommendationQualityPanel>p{font-size:12px;line-height:1.7;color:#abc6e0}
+.recommendationQualityGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;margin:17px 0}
+.recommendationQualityGrid>div{display:flex;flex-direction:column;gap:9px;
+  border:1px solid #35526d;border-radius:10px;background:#192f46;padding:14px;min-width:0}
+.recommendationQualityGrid small{font-size:11px;color:#a8c0d7;line-height:1.5}
+.recommendationQualityGrid strong{font-size:21px;font-variant-numeric:tabular-nums;color:#eaf3ff}
+.recommendationQualityGate{border-left:3px solid #8fbafa;padding:9px 14px;background:#1a344e;
+  border-radius:0 8px 8px 0;color:#c5dff7!important}
+.recommendationQualityDetails{border:1px solid #35516b;border-radius:9px;padding:13px;
+  color:#b7d3ec;margin-top:15px;font-size:12px}
+.recommendationQualityDetails summary{cursor:pointer;font-weight:700}
+.recommendationQualityDetails summary:focus-visible{outline:2px solid #a8c9ff}
+.recommendationQualityDetails p{overflow-wrap:anywhere;font-size:11px;line-height:1.8}
+.recommendationQualityDisclaimer{border-top:1px solid #34516a;margin:17px 0 0!important;
+  padding-top:13px;color:#a9bdd2!important}
+.recommendationSpotlightMessage>.recommendationSpotlightQuality{
+  margin:15px 0 0;padding:12px;border:1px solid #34536c;border-radius:9px;
+  background:#13293b;color:#acc9df;font-size:11px;line-height:1.65}
+.recommendationSpotlightQuality strong{color:#d4ecff}
+@media(max-width:780px){.recommendationQualityGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:500px){.recommendationQualityPanel{padding:17px}
+  .recommendationQualityGrid>div{padding:10px}
+  .recommendationQualityGrid strong{font-size:19px}}
+@media print{.recommendationQualityPanel{break-inside:avoid;
+  background:#fff!important;border-color:#c6d4e1!important}
+  .recommendationQualityPanel h2,.recommendationQualityGrid strong,
+  .recommendationQualityPanel p{color:#183048!important}
+  .recommendationQualityGrid>div{background:#f1f7fc!important;border-color:#c9d8e3!important}}

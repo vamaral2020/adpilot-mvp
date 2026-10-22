@@ -22,6 +22,41 @@ export type RecommendationAdvice = {
   evidence: RecommendationEvidence[];
 };
 
+export type RecommendationDataQuality = {
+  status: "NO_COLLECTION_RECEIPT" | "PARTIAL_WINDOWS" | "WINDOWS_OBSERVED"
+    | "MULTIPLE_ACCOUNTS" | "ACCOUNT_MISMATCH" | "CURRENT_DAY_INCOMPLETE";
+  requestedDays: number;
+  collectedDays: number;
+  daysWithRows: number;
+  daysWithoutRows: number;
+  uncollectedDates: string[];
+  collectedWithoutRows: string[];
+  lastWindowSuccess: string | null;
+  syncFresh: boolean;
+  analysisEligible: boolean;
+};
+
+export function recommendationQualitySummary(q?: RecommendationDataQuality | null): string {
+  if (!q) return "A verificação das coletas está indisponível.";
+  switch(q.status) {
+    case "NO_COLLECTION_RECEIPT":
+      return "Não há comprovantes de coleta para o período selecionado.";
+    case "PARTIAL_WINDOWS":
+      return "A Meta foi consultada em apenas parte do período.";
+    case "MULTIPLE_ACCOUNTS":
+    case "ACCOUNT_MISMATCH":
+      return "É preciso conferir a conta Meta dos registros coletados.";
+    case "CURRENT_DAY_INCOMPLETE":
+      return "O período inclui o dia atual, ainda não consolidado.";
+    case "WINDOWS_OBSERVED":
+      return q.syncFresh
+        ? "Consultas concluídas e recentes. A atribuição financeira continua preliminar."
+        : "Os dias foram consultados, mas é necessário atualizar a sincronização.";
+    default:
+      return "A qualidade dos dados não pôde ser classificada.";
+  }
+}
+
 export type RecommendationPreview = {
   since: string;
   until: string;
@@ -29,6 +64,7 @@ export type RecommendationPreview = {
   metaSyncStatus: string | null;
   warnings: string[];
   recommendations: RecommendationAdvice[];
+  quality?: RecommendationDataQuality | null;
 };
 
 export type Spotlight = {
@@ -42,9 +78,14 @@ export type Spotlight = {
   currency: string | null;
   coverageVerified: boolean;
   syncUnconfirmed: boolean;
+  qualityStatus: RecommendationDataQuality["status"] | null;
+  qualitySummary: string | null;
+  collectedDays: number | null;
+  requestedDays: number | null;
 };
 
 const ruleRank: Record<string, number> = {
+  DATA_QUALITY_LIMITED: 20,
   SPEND_WITHOUT_PURCHASES: 9,
   ROAS_BELOW_TARGET: 8,
   CPA_ABOVE_TARGET: 7,
@@ -71,9 +112,11 @@ function validAdvice(value: RecommendationAdvice): boolean {
  */
 export function selectSpotlight(preview?: RecommendationPreview): Spotlight {
   const fallback: Pick<Spotlight, "campaignName" | "ruleCode" | "confidence" | "evidence"
-    | "currency" | "coverageVerified" | "syncUnconfirmed"> = {
+    | "currency" | "coverageVerified" | "syncUnconfirmed" | "qualityStatus"
+    | "qualitySummary" | "collectedDays" | "requestedDays"> = {
     campaignName: null, ruleCode: null, confidence: null, evidence: [],
     currency: null, coverageVerified: false, syncUnconfirmed: false,
+    qualityStatus: null, qualitySummary: null, collectedDays: null, requestedDays: null,
   };
   if (!preview || !Array.isArray(preview.recommendations)) {
     return {
@@ -86,7 +129,18 @@ export function selectSpotlight(preview?: RecommendationPreview): Spotlight {
     || (ruleRank[b.ruleCode] ?? 0) - (ruleRank[a.ruleCode] ?? 0)
     || (a.campaignName ?? a.campaignId ?? "").localeCompare(b.campaignName ?? b.campaignId ?? "")
   );
-  const syncUnconfirmed = preview.warnings?.includes("META_SYNC_NOT_CONFIRMED_CURRENT") ?? false;
+  const quality = preview.quality;
+  const syncUnconfirmed = !quality?.syncFresh
+    || (preview.warnings?.includes("META_SYNC_NOT_CONFIRMED_CURRENT") ?? false);
+  const qualityFields = quality ? {
+    qualityStatus: quality.status,
+    qualitySummary: recommendationQualitySummary(quality),
+    collectedDays: quality.collectedDays,
+    requestedDays: quality.requestedDays,
+  } : {
+    qualityStatus: null, qualitySummary: null,
+    collectedDays: null, requestedDays: null,
+  };
   if (candidates.length) {
     const top = candidates[0];
     return {
@@ -95,6 +149,7 @@ export function selectSpotlight(preview?: RecommendationPreview): Spotlight {
       ruleCode: top.ruleCode, confidence: top.confidence,
       currency: top.currency, evidence: Array.isArray(top.evidence) ? top.evidence : [],
       coverageVerified: preview.coverageVerified === true, syncUnconfirmed,
+      ...qualityFields,
     };
   }
   const noData = preview.recommendations.some(item => item.ruleCode === "NO_META_INSIGHTS");
@@ -106,6 +161,7 @@ export function selectSpotlight(preview?: RecommendationPreview): Spotlight {
       ? "Ainda não há registros históricos da Meta para o período. Isso não significa que o investimento ou as vendas tenham sido zero."
       : "Defina ROAS mínimo e/ou CPA máximo na análise de recomendações para comparar o desempenho com os objetivos do negócio.",
     coverageVerified: preview.coverageVerified === true, syncUnconfirmed,
+    ...qualityFields,
   };
 }
 

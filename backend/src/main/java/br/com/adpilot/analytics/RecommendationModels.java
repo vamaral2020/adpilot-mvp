@@ -27,10 +27,20 @@ public final class RecommendationModels {
             String title, String justification, List<Metric> evidence,
             List<String> limitations) {}
 
+    /**
+     * Provenance is restricted to completed Meta collection windows. A fresh,
+     * fully fetched window still does not guarantee attribution finality, actual
+     * orders, financial completeness, or a particular campaign's spend.
+     */
+    public record DataQuality(String status, int requestedDays, int collectedDays,
+            int daysWithRows, int daysWithoutRows, List<LocalDate> uncollectedDates,
+            List<LocalDate> collectedWithoutRows, Instant lastWindowSuccess,
+            boolean syncFresh, boolean analysisEligible) {}
+
     public record Report(LocalDate since, LocalDate until, BigDecimal targetRoas,
             BigDecimal targetCpa, boolean coverageVerified, Instant generatedAt,
             String metaSyncStatus, Instant lastMetaSyncSuccess,
-            List<String> warnings, List<Advice> recommendations) {}
+            List<String> warnings, List<Advice> recommendations, DataQuality quality) {}
 
     public record Stored(UUID evaluationId, Report report) {}
 }

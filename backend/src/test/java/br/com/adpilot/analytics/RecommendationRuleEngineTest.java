@@ -1,6 +1,7 @@
 package br.com.adpilot.analytics;
 
 import static org.junit.jupiter.api.Assertions.*;
+import br.com.adpilot.analytics.RecommendationModels.DataQuality;
 import br.com.adpilot.analytics.RecommendationModels.DailyCampaign;
 import br.com.adpilot.analytics.RecommendationModels.Request;
 import br.com.adpilot.analytics.RecommendationModels.SyncState;
@@ -21,8 +22,15 @@ class RecommendationRuleEngineTest {
         return new DailyCampaign("123","52596120828588","Vendas 102 peças","BRL",
                 START.plusDays(offset),bd(spend),impressions,clicks,bd(purchases),bd(revenue));
     }
+    private static DataQuality quality(Request req,List<DailyCampaign> rows, boolean fresh) {
+        int days=(int)java.time.temporal.ChronoUnit.DAYS.between(req.since(),req.until())+1;
+        int withRows=(int)rows.stream().map(DailyCampaign::day).distinct().count();
+        return new DataQuality("WINDOWS_OBSERVED",days,days,withRows,days-withRows,
+                List.of(),List.of(),NOW,fresh,fresh);
+    }
     private RecommendationModels.Report run(Request req,List<DailyCampaign> rows) {
-        return engine.evaluate(req,rows,new SyncState("SUCCEEDED",NOW),NOW);
+        return engine.evaluate(req,rows,new SyncState("SUCCEEDED",NOW),NOW,
+                quality(req,rows,true));
     }
     private static boolean contains(RecommendationModels.Report report,String rule) {
         return report.recommendations().stream().anyMatch(r -> r.ruleCode().equals(rule));
@@ -72,7 +80,7 @@ class RecommendationRuleEngineTest {
         assertTrue(report.recommendations().stream().allMatch(r ->
                 r.confidence().equals("LOW") && r.actionCode().equals("INVESTIGATE")));
         assertFalse(report.coverageVerified());
-        assertEquals(1, report.recommendations().getFirst().ruleVersion());
+        assertEquals(2, report.recommendations().getFirst().ruleVersion());
     }
 
     @Test void favorableTenPurchasesStillNeverRecommendsBudgetIncrease() {
@@ -141,8 +149,68 @@ class RecommendationRuleEngineTest {
     @Test void missingLatestMetaSyncAlwaysLowersConfidence() {
         var req=new Request(START,START.plusDays(6),null,null);
         var report=engine.evaluate(req,List.of(row(0,"50","1","100",100,10)),
-                new SyncState(null,null),NOW);
+                new SyncState(null,null),NOW,quality(req,List.of(row(0,"50","1","100",100,10)),false));
         assertTrue(report.warnings().contains("META_SYNC_NOT_CONFIRMED_CURRENT"));
         assertFalse(report.coverageVerified());
     }
+
+
+    @Test void incompleteCollectionBlocksFinancialInvestigationsEvenWithLargeSamples() {
+        var req=new Request(START,START.plusDays(13),bd("3"),bd("50"));
+        var rows=new ArrayList<DailyCampaign>();
+        for (int i=0;i<14;i++) rows.add(row(i,"100","1","150",1000,100));
+        var q=new DataQuality("PARTIAL_WINDOWS",14,7,14,0,
+                List.of(START.plusDays(7)),List.of(),NOW,true,false);
+        var report=engine.evaluate(req,rows,new SyncState("SUCCEEDED",NOW),NOW,q);
+        assertTrue(contains(report,"DATA_QUALITY_LIMITED"));
+        assertFalse(contains(report,"ROAS_BELOW_TARGET"));
+        assertFalse(contains(report,"CPA_ABOVE_TARGET"));
+        assertFalse(contains(report,"FAVORABLE_PERFORMANCE"));
+        assertFalse(contains(report,"CTR_DECLINING"));
+        assertTrue(report.warnings().contains("META_COLLECTION_WINDOWS_PARTIAL"));
+        assertEquals("REVIEW_DATA",report.recommendations().getFirst().actionCode());
+        assertEquals("INSUFFICIENT",report.recommendations().getFirst().confidence());
+        assertFalse(report.coverageVerified());
+    }
+
+    @Test void staleSyncDoesNotBecomeFreshFromOldCollectionReceipts() {
+        var req=new Request(START,START.plusDays(13),bd("3"),bd("50"));
+        var rows=new ArrayList<DailyCampaign>();
+        for (int i=0;i<14;i++) rows.add(row(i,"100","1","150",1000,100));
+        var report=engine.evaluate(req,rows,
+                new SyncState("SUCCEEDED",NOW.minusSeconds(172800)),NOW,
+                quality(req,rows,false));
+        assertTrue(contains(report,"DATA_QUALITY_LIMITED"));
+        assertTrue(report.warnings().contains("META_SYNC_STALE_OR_FAILED"));
+        assertFalse(contains(report,"ROAS_BELOW_TARGET"));
+        assertFalse(contains(report,"CPA_ABOVE_TARGET"));
+    }
+
+    @Test void partialHistoryAndLowSampleAreTwoDistinctReasonsNotToChangeBudget() {
+        var req=new Request(START,START.plusDays(6),bd("3"),bd("50"));
+        var rows=List.of(row(1,"130.88","3","698.05",8239,330));
+        var q=new DataQuality("NO_COLLECTION_RECEIPT",7,0,1,0,
+                List.of(START),List.of(),null,false,false);
+        var report=engine.evaluate(req,rows,new SyncState(null,null),NOW,q);
+        assertTrue(contains(report,"DATA_QUALITY_LIMITED"));
+        assertTrue(contains(report,"LOW_SAMPLE"));
+        assertFalse(contains(report,"ROAS_BELOW_TARGET"));
+        assertTrue(report.recommendations().stream().noneMatch(r ->
+                r.actionCode().contains("SCALE") || r.actionCode().contains("PAUSE")));
+    }
+
+    @Test void freshFullyObservedWindowStillDoesNotAuthorizeAutomaticBudgetChanges() {
+        var req=new Request(START,START.plusDays(13),bd("3"),bd("50"));
+        var rows=new ArrayList<DailyCampaign>();
+        for (int i=0;i<14;i++) rows.add(row(i,"100","1","150",1000,100));
+        var report=run(req,rows);
+        assertEquals("WINDOWS_OBSERVED",report.quality().status());
+        assertTrue(report.quality().analysisEligible());
+        assertFalse(report.coverageVerified());
+        assertTrue(contains(report,"ROAS_BELOW_TARGET"));
+        assertTrue(contains(report,"CPA_ABOVE_TARGET"));
+        assertTrue(report.recommendations().stream().noneMatch(r ->
+                r.actionCode().contains("PAUSE") || r.actionCode().contains("SCALE")));
+    }
+
 }
