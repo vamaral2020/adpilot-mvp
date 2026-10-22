@@ -406,3 +406,131 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
   .tableFootnote,.microNote,.commerceNote{color:#56697c!important}
   .commerceKpis{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
+
+
+/* PR 019 — frontend-only pre-campaign unit economics calculator. */
+.calcPage{max-width:1440px;margin:0 auto;padding:33px clamp(18px,4.2vw,64px) 58px;color:var(--text)}
+.calcNav{display:flex;align-items:center;gap:22px;flex-wrap:wrap;
+  border-bottom:1px solid #27364b;padding-bottom:22px;font-size:12px;color:#a4b6ce}
+.calcNav a{color:#a7cafa;font-weight:650}
+.calcNav a:hover{text-decoration:underline}
+.calcNav>span{margin-left:auto;font-size:11px;color:#718cae}
+.calcHero{margin:36px 0 26px}
+.calcHero h1{font-size:clamp(30px,3.5vw,43px)}
+.calcHero>p{font-size:14px;line-height:1.75;color:#a1b5ce;max-width:770px;margin:0}
+.calcLayout{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(340px,.92fr);
+  gap:20px;align-items:start}
+.calcInputPanel,.calcResults{border:1px solid #2a405a;border-radius:17px;
+  background:linear-gradient(145deg,#152235,#111b2a);padding:24px;min-width:0}
+.calcSectionTop{display:flex;align-items:start;gap:14px;margin-bottom:25px}
+.calcStep{display:grid;place-items:center;min-width:39px;height:39px;
+  background:#264368;border:1px solid #436c9d;border-radius:12px;
+  color:#c8e1fe;font-weight:750;font-size:13px}
+.calcSectionTop h2{font-size:21px;letter-spacing:-.5px;margin:2px 0 8px}
+.calcSectionTop p{margin:0;font-size:12px;line-height:1.65;color:#99afc6}
+.calcSectionTop p strong{color:#cde1f6;font-weight:650}
+.calcFieldGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 14px}
+.calcField{min-width:0}
+.calcField>label{display:block;color:#c6d9eb;font-size:12px;font-weight:700;margin-bottom:8px}
+.calcFieldControl{display:flex;align-items:center;border:1px solid #3c526e;background:#0c1829;
+  border-radius:10px;min-height:44px;transition:border-color .15s}
+.calcFieldControl:focus-within{border-color:#92bdff;box-shadow:0 0 0 2px #6b9cf22e}
+.calcFieldControl.calcFieldInvalid{border-color:#e2a173}
+.calcFieldControl>span{color:#9eb9d2;padding:0 11px 0 14px;font-size:12px;
+  border-right:1px solid #2b4058}
+.calcFieldControl>input{min-width:0;width:100%;border:0;outline:0!important;
+  color:#e7f4ff;padding:11px 12px;background:transparent;font-size:15px;
+  font-variant-numeric:tabular-nums}
+.calcFieldControl>input::placeholder{color:#5c718b}
+.calcFieldHelp{font-size:11px;line-height:1.55;color:#8da3bd;margin:7px 0 0}
+.calcFieldError{color:#f1af9f;font-size:11px;line-height:1.45;margin:7px 0 0}
+.calcOptional{border-top:1px solid #2b3d54;margin-top:25px;padding-top:17px}
+.calcOptional>summary{display:flex;align-items:center;justify-content:space-between;
+  gap:14px;cursor:pointer;list-style:none;font-size:13px;font-weight:700;color:#dce9f8;
+  padding:10px 0}
+.calcOptional>summary::-webkit-details-marker{display:none}
+.calcOptional>summary:focus-visible,.calcBreakdown>summary:focus-visible{
+  outline:2px solid #8bb4fa;outline-offset:3px}
+.calcOptionalHint{color:#90b4dd;font-size:11px;font-weight:550}
+.calcOptionalHint span{display:inline-block;transition:transform .15s}
+.calcOptional[open] .calcOptionalHint span{transform:rotate(180deg)}
+.calcOptional>p{font-size:12px;line-height:1.65;color:#92aac5;margin:8px 0 17px}
+.calcOptional>p strong{color:#cfdded}
+.calcPanelFooter{display:flex;justify-content:space-between;align-items:center;gap:16px;
+  margin-top:26px;border-top:1px solid #2b3d52;padding-top:19px}
+.calcPanelFooter p{color:#859bb4;font-size:11px;line-height:1.65;margin:0}
+.calcReset{flex-shrink:0;color:#afc9e7;background:#1b3048;border:1px solid #355474;
+  padding:11px 14px;border-radius:9px;font-size:11px;font-weight:700}
+.calcReset:hover{background:#254565}
+.calcEmpty,.calcWarning{border-radius:11px;border:1px solid #375574;
+  background:#132d42;color:#bed9f0;padding:19px;line-height:1.6}
+.calcEmpty strong,.calcWarning strong{display:block;margin-bottom:8px;font-size:14px;color:#e4f3ff}
+.calcEmpty p,.calcWarning p{font-size:12px;margin:0}
+.calcWarning{border-color:#7c5c44;background:#342a24;color:#ead0af;margin-bottom:18px}
+.calcWarning strong{color:#ffe3c2}
+.calcGoalGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.calcGoalCard{display:flex;flex-direction:column;min-height:175px;padding:18px;
+  border:1px solid #406386;border-radius:13px;background:#18344f}
+.calcGoalCardEmphasis{background:linear-gradient(145deg,#153d3c,#163344);border-color:#398981}
+.calcGoalCard>span{font-size:11px;font-weight:700;color:#a3c6e9}
+.calcGoalCard>strong{color:#d9eaff;font-size:clamp(20px,2.2vw,29px);
+  margin:15px 0 10px;letter-spacing:-.8px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.calcGoalCardEmphasis>strong{color:#b0f1e2}
+.calcGoalCard>small{color:#a0b9d0;line-height:1.55;font-size:11px;margin-top:auto}
+.calcSummary{border-top:1px solid #2d465e;margin-top:24px;padding-top:10px}
+.calcSummary>div{display:flex;justify-content:space-between;align-items:center;
+  gap:10px;line-height:1.5;border-bottom:1px solid #273c50;padding:11px 0}
+.calcSummary span{font-size:12px;color:#99afc5}
+.calcSummary strong{font-size:14px;color:#e1f1ff;text-align:right;white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.calcSummary strong.calcNegative{color:#f3a49b}
+.calcBreakdown{margin-top:19px;border:1px solid #324860;border-radius:10px;padding:13px}
+.calcBreakdown>summary{list-style:none;cursor:pointer;font-size:12px;font-weight:700;color:#bddafa;
+  display:flex;justify-content:space-between}
+.calcBreakdown>summary::-webkit-details-marker{display:none}
+.calcBreakdownRows{margin-top:12px}
+.calcBreakdownRows>div{display:flex;justify-content:space-between;gap:14px;
+  color:#9cb4cb;font-size:11px;padding:8px 0}
+.calcBreakdownRows strong{color:#c9e0f4;white-space:nowrap}
+.calcBreakdownRows>.calcBreakdownTotal{border-top:1px solid #34516f;
+  border-bottom:1px solid #34516f;margin:7px 0;padding:12px 0;font-weight:700}
+.calcBreakdownRows>.calcBreakdownTotal strong{color:#9cf0cf}
+.calcCopy{display:block;width:100%;background:#76a8f7;border:1px solid #9dc3ff;color:#0e2038;
+  border-radius:10px;padding:13px 16px;margin-top:22px;font-size:12px;font-weight:800}
+.calcCopy:hover:not(:disabled){background:#a4c8ff}
+.calcCopy:disabled{background:#35445a;color:#8094ac;border-color:#465771;cursor:not-allowed}
+.calcCopyStatus{color:#9beacc;font-size:12px;margin:12px 0 0;line-height:1.6}
+.calcCopyError{color:#f0b5aa}
+.calcGuidance{background:#121d2c;border:1px solid #293e53;border-radius:17px;
+  margin-top:24px;padding:28px}
+.calcGuidance h2{font-size:22px;margin:11px 0 20px;letter-spacing:-.5px}
+.calcGuidanceGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
+.calcGuidanceGrid article{border:1px solid #2c435b;background:#17283c;border-radius:12px;padding:19px}
+.calcGuidanceNumber{font-size:12px;letter-spacing:1px;color:#83aeee;font-weight:750}
+.calcGuidanceGrid h3{font-size:16px;margin:11px 0}
+.calcGuidanceGrid p{font-size:12px;color:#a5bed5;line-height:1.7;margin:0}
+.calcMetaLink{display:inline-flex;align-items:center;gap:10px;background:#24466a;color:#cee4fc;
+  border:1px solid #46709b;border-radius:10px;padding:12px 16px;margin-top:20px;
+  font-weight:750;font-size:12px}
+.calcMetaLink:hover{background:#315b84}
+.calcDisclaimer{font-size:11px;line-height:1.7;color:#839cb5;margin:17px 0 0;max-width:920px}
+
+@media(max-width:1150px){.calcLayout{grid-template-columns:1fr}.calcGoalCard>strong{font-size:27px}}
+@media(max-width:760px){.calcGuidanceGrid{grid-template-columns:1fr}
+  .calcPage{padding-top:18px}.calcResults,.calcInputPanel,.calcGuidance{padding:19px}
+  .calcNav>span{margin-left:0}.calcHero{margin:26px 0}
+  .calcFieldGrid{grid-template-columns:1fr}.calcPanelFooter{flex-wrap:wrap}
+  .calcGoalGrid{grid-template-columns:1fr}.calcGoalCard{min-height:135px}
+  .calcStep{min-width:34px;height:34px}
+}
+@media(max-width:980px){.sidebar{flex-wrap:wrap;height:auto}
+  .sideNav{flex-wrap:wrap}}
+@media print{.calcPage{padding:0;background:#fff;color:#17283b}
+  .calcNav,.calcCopy,.calcMetaLink,.calcReset{display:none!important}
+  .calcInputPanel,.calcResults,.calcGuidance{background:#fff!important;color:#17283b!important;
+    break-inside:avoid}
+  .calcGoalCard{background:#eaf1f8!important}
+  .calcGoalCard>strong,.calcSummary strong,.calcGoalCardEmphasis>strong{color:#17283b!important}
+  .calcFieldControl>input{color:#17283b!important}
+  .calcGuidanceGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
