@@ -16,9 +16,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 class RecommendationServiceTest {
     private final RecommendationRepository repository=mock(RecommendationRepository.class);
+    private final AnalyticsHistoryRepository historyRepository=mock(AnalyticsHistoryRepository.class);
     private final Clock clock=Clock.fixed(Instant.parse("2026-10-21T15:00:00Z"),ZoneOffset.UTC);
     private final RecommendationService service=new RecommendationService(
-            repository,new RecommendationRuleEngine(),clock);
+            repository,new RecommendationRuleEngine(),historyRepository,
+            new RecommendationDataQualityAssessment(),clock);
     private static final LocalDate FROM=LocalDate.of(2026,10,14);
     private static final LocalDate TO=LocalDate.of(2026,10,20);
 
@@ -37,7 +39,7 @@ class RecommendationServiceTest {
             var error=assertThrows(ResponseStatusException.class,()->service.preview(request));
             assertEquals(400,error.getStatusCode().value());
         }
-        verifyNoInteractions(repository);
+        verifyNoInteractions(repository,historyRepository);
     }
 
     @Test void previewReadsOnlyAndIncludesAttributionCaveats() {
@@ -49,6 +51,24 @@ class RecommendationServiceTest {
         assertTrue(report.warnings().contains("META_PURCHASES_NOT_RECONCILED_WITH_STORE"));
         verify(repository).dailyCampaigns(FROM,TO);
         verify(repository).metaSyncState();
+        verify(historyRepository).metaWindows(FROM,TO);
+        assertEquals("NO_COLLECTION_RECEIPT",report.quality().status());
+        verify(repository,never()).store(any());
+    }
+
+
+    @Test void successfulReceiptIsIncludedAsAdvisoryOnlyQualityContext() {
+        var completed=Instant.parse("2026-10-21T14:55:00Z");
+        when(repository.dailyCampaigns(FROM,TO)).thenReturn(List.of());
+        when(repository.metaSyncState()).thenReturn(new SyncState("SUCCEEDED",completed));
+        when(historyRepository.metaWindows(FROM,TO)).thenReturn(List.of(
+                new br.com.adpilot.analytics.AnalyticsHistoryModels.MetaWindow(
+                        "123",FROM,TO,completed)));
+        var report=service.preview(new Request(FROM,TO,null,null));
+        assertEquals("WINDOWS_OBSERVED",report.quality().status());
+        assertEquals(7,report.quality().collectedDays());
+        assertTrue(report.quality().analysisEligible());
+        assertFalse(report.coverageVerified());
         verify(repository,never()).store(any());
     }
 
