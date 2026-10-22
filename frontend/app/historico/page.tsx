@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { campaignOutcome, graphBars, storeOutcome, type AnalyticsHistory } from "../../lib/history";
+import { campaignOutcome, graphBars, storeOutcome, coverageMessage,
+  type AnalyticsHistory, type HistoryCoverage } from "../../lib/history";
 import { money, number, presetPeriod, resolvePeriod } from "../../lib/dashboard";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,49 @@ async function loadHistory(since: string, until: string): Promise<{ data?: Analy
   } catch {
     return { error: "O histórico local não está disponível." };
   }
+}
+
+/** Audits completed query windows; does not claim that Meta or store data is final. */
+function CoveragePanel({ coverage }: { coverage?: HistoryCoverage | null }) {
+  const meta=coverage?.meta;
+  const shop=coverage?.store;
+  return <section className="historyCard historyCoverage" aria-labelledby="historyCoverageTitle">
+    <div className="historySectionHead">
+      <div>
+        <div className="smallEyebrow">QUALIDADE DOS DADOS · JANELAS DE COLETA</div>
+        <h2 id="historyCoverageTitle">O quanto do período foi consultado?</h2>
+        <p>O AdPilot diferencia dados coletados, dias sem consulta comprovada e dias sem linhas retornadas.</p>
+      </div>
+      <span className="historySourceTag">Auditoria de sincronização</span>
+    </div>
+    <p className="historyCoverageExplanation">{coverageMessage(coverage)}</p>
+    {meta ? <>
+      <div className="historyCoverageMetrics">
+        <div><small>Dias no período</small><strong>{meta.requestedDays}</strong></div>
+        <div><small>Dias consultados pela Meta</small><strong>{meta.observedDays}</strong></div>
+        <div><small>Dias sem consulta comprovada</small><strong>{meta.unobservedDates.length}</strong></div>
+        <div><small>Dias consultados sem linhas</small><strong>{meta.datesWithoutRows}</strong></div>
+      </div>
+      <details className="historyCoverageDetails">
+        <summary>Consultar datas e limitações técnicas</summary>
+        <p><strong>Dias sem coleta comprovada:</strong>{" "}
+          {meta.unobservedDates.length ? meta.unobservedDates.join(", ") : "Nenhum na janela Meta observada."}</p>
+        <p><strong>Dias consultados sem linhas retornadas:</strong>{" "}
+          {meta.observedWithoutRows.length ? meta.observedWithoutRows.join(", ") : "Nenhum."}</p>
+        <p><strong>Última consulta Meta registrada:</strong>{" "}
+          {meta.lastSuccess ? new Date(meta.lastSuccess).toLocaleString("pt-BR",{timeZone:"UTC"})+" UTC" : "Não registrada"}</p>
+      </details>
+    </> : <p className="historySmall">Execute uma coleta após a atualização para registrar as janelas de consulta.</p>}
+    <p className="historyCoverageShop">
+      <strong>Nuvemshop:</strong> {shop?.successfulUpdateWindows ?? 0} janelas de atualizações
+      de pedidos registradas com sucesso após esta atualização.
+      A coleta usa a data de <strong>atualização</strong> do pedido, e não comprova
+      que todas as vendas pagas de cada dia foram encontradas.
+    </p>
+    <p className="historySmall">Consultas concluídas não garantem atribuição definitiva da Meta,
+      nem permitem interpretar dias sem linhas como gasto ou vendas iguais a zero.
+      O histórico financeiro geral continua classificado como não verificado.</p>
+  </section>;
 }
 
 function Metric({ label, value, help, emphasis = false }: {
@@ -195,6 +239,8 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
           e fusos horários diferentes. MER auditado: <strong>{verifiedMer === null ? "indisponível" : number(verifiedMer,2) + "x"}</strong>.
         </p>
       </section>
+
+      <CoveragePanel coverage={history.coverage}/>
 
       {!history.complete && <div className="alertBanner caution" role="status">
         <strong>Histórico ainda não auditado como completo.</strong>
