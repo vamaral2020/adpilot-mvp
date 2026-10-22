@@ -282,7 +282,7 @@ jobs:
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
             'http://127.0.0.1:13000/planejamento' -o /tmp/adpilot-pr022-page.html
           grep -Fq 'Produtos e campanhas' /tmp/adpilot-pr022-page.html
-          grep -Fq 'Associação manual' /tmp/adpilot-pr022-page.html
+          grep -Fq 'ASSOCIAÇÃO MANUAL' /tmp/adpilot-pr022-page.html
           curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
             'http://127.0.0.1:13000/recomendacoes?since=2026-10-14&until=2026-10-20' \
             -o /tmp/adpilot-pr022-recommendations-ui.html
