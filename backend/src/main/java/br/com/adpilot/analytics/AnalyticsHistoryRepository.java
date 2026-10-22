@@ -1,6 +1,8 @@
 package br.com.adpilot.analytics;
 
 import br.com.adpilot.analytics.AnalyticsHistoryModels.CampaignResult;
+import br.com.adpilot.analytics.AnalyticsHistoryModels.MetaWindow;
+import br.com.adpilot.analytics.AnalyticsHistoryModels.ShopWindowSummary;
 import br.com.adpilot.analytics.AnalyticsHistoryModels.MetaDay;
 import br.com.adpilot.analytics.AnalyticsHistoryModels.SourceState;
 import br.com.adpilot.analytics.AnalyticsHistoryModels.StoreDay;
@@ -91,6 +93,42 @@ public class AnalyticsHistoryRepository {
                 AnalyticsSyncStore.WORKSPACE,
                 Timestamp.from(since.atStartOfDay(ZoneOffset.UTC).toInstant()),
                 Timestamp.from(until.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant()));
+    }
+
+    /** Only windows committed alongside SUCCEEDED runs are credible.
+     * Historical runs before V5 intentionally have no windows.
+     */
+    @Transactional(readOnly = true)
+    public List<MetaWindow> metaWindows(LocalDate since, LocalDate until) {
+        return jdbc.query("""
+                SELECT w.account_id, w.meta_from, w.meta_through, r.finished_at
+                FROM analytics_sync_window w
+                JOIN analytics_sync_run r ON r.id=w.run_id AND r.workspace_id=w.workspace_id
+                WHERE w.workspace_id=? AND w.provider='META_ADS'
+                  AND w.resource='INSIGHTS_DAILY' AND r.status='SUCCEEDED'
+                  AND w.meta_from<=? AND w.meta_through>=?
+                ORDER BY r.finished_at DESC, r.id DESC
+                """, (rs,n) -> new MetaWindow(rs.getString("account_id"),
+                rs.getObject("meta_from",LocalDate.class),
+                rs.getObject("meta_through",LocalDate.class),
+                rs.getTimestamp("finished_at").toInstant()),
+                AnalyticsSyncStore.WORKSPACE,until,since);
+    }
+
+    /** Updated-at collection cannot prove payment-date completeness. */
+    @Transactional(readOnly = true)
+    public ShopWindowSummary shopWindowSummary() {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*) AS collected,
+                       MAX(r.finished_at) AS latest
+                FROM analytics_sync_window w
+                JOIN analytics_sync_run r ON r.id=w.run_id AND r.workspace_id=w.workspace_id
+                WHERE w.workspace_id=? AND w.provider='NUVEMSHOP'
+                  AND w.resource='ORDERS' AND r.status='SUCCEEDED'
+                """, (rs,n) -> new ShopWindowSummary(rs.getLong("collected"),
+                rs.getTimestamp("latest") == null ? null :
+                        rs.getTimestamp("latest").toInstant()),
+                AnalyticsSyncStore.WORKSPACE);
     }
 
     @Transactional(readOnly = true)
