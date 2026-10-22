@@ -91,6 +91,9 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
       <h1>O que merece atenção<span className="titlePeriod">?</span></h1>
       <p>Orientações baseadas em compras atribuídas pela Meta, investimento e tendências.
         Nenhuma campanha ou orçamento é alterado pelo AdPilot.</p>
+      <p className="calcRecommendationPrompt">
+        Vai criar uma campanha? <Link href="/calculadora">Planeje seu CPA e ROAS a partir da margem do produto →</Link>
+      </p>
     </header>
     <div className="filterPanel">
       <form className="filterForm" method="GET">
