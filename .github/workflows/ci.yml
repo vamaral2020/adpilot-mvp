@@ -206,6 +206,96 @@ jobs:
 
 
 
+          # PR 022: backend computes immutable economics and restricts each goal to an explicit BRL campaign.
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:18080/api/v1/planning/catalog' -o /tmp/adpilot-pr022-empty-catalog.json
+          jq -e '(.goals|length)==0 and (.campaigns|length)==1
+            and .campaigns[0].campaignId=="52596120828588"
+            and .campaigns[0].currency=="BRL"' /tmp/adpilot-pr022-empty-catalog.json
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            "SELECT count(*) FROM flyway_schema_history WHERE version='6' AND success=true")" = "1"
+          # Invalid or incomplete cost inputs must never be silently coerced to zero.
+          test "$(curl -s -o /dev/null -w '%{http_code}' -u admin:ci-local-admin-password-123 \
+            -H 'Content-Type: application/json' -d '{"productLabel":"Vestido","priceCents":19900}' \
+            http://127.0.0.1:18080/api/v1/planning/goals)" = "400"
+          cat >/tmp/adpilot-pr022-plan.json <<'JSON'
+          {"productLabel":"Vestido midi azul","priceCents":19900,"productCostCents":7800,
+           "taxBasisPoints":400,"paymentBasisPoints":500,"paymentFixedCents":200,
+           "shippingSubsidyCents":300,"packagingCents":200,"otherCostsCents":1000,
+           "desiredProfitBasisPoints":1700}
+          JSON
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            -H 'Content-Type: application/json' --data-binary @/tmp/adpilot-pr022-plan.json \
+            'http://127.0.0.1:18080/api/v1/planning/goals' -o /tmp/adpilot-pr022-goal.json
+          jq -e '.targetCpaCents==5226 and .targetRoasHundredths==381
+            and .productLabel=="Vestido midi azul"' /tmp/adpilot-pr022-goal.json
+          PLAN_ID="$(jq -r '.id' /tmp/adpilot-pr022-goal.json)"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -u admin:ci-local-admin-password-123 \
+            -X PUT -H 'Content-Type: application/json' \
+            -d "{\"goalId\":\"$PLAN_ID\",\"singleProductConfirmed\":false}" \
+            'http://127.0.0.1:18080/api/v1/planning/campaigns/123456/52596120828588/goal')" = "400"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -u admin:ci-local-admin-password-123 \
+            -X PUT -H 'Content-Type: application/json' \
+            -d "{\"goalId\":\"$PLAN_ID\",\"singleProductConfirmed\":true}" \
+            'http://127.0.0.1:18080/api/v1/planning/campaigns/999/52596120828588/goal')" = "400"
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            -X PUT -H 'Content-Type: application/json' \
+            -d "{\"goalId\":\"$PLAN_ID\",\"singleProductConfirmed\":true}" \
+            'http://127.0.0.1:18080/api/v1/planning/campaigns/123456/52596120828588/goal' \
+            | jq -e '.status=="LINKED"'
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:18080/api/v1/planning/catalog' \
+            | jq -e '.campaigns[0].linkedProductLabel=="Vestido midi azul"
+              and .campaigns[0].linkedCpaCents==5226'
+          # Reused product goals eliminate CONFIGURE_GOALS but cannot override the PR021 data gate.
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20' \
+            -o /tmp/adpilot-pr022-recommendations.json
+          jq -e '(.linkedGoals|length)==1
+            and .linkedGoals[0].targetCpa==52.26
+            and .linkedGoals[0].targetRoas==3.81
+            and (.warnings|index("MANUALLY_LINKED_PRODUCT_GOALS")!=null)
+            and (.warnings|index("BUSINESS_GOALS_NOT_CONFIGURED")==null)
+            and (.recommendations|map(.ruleCode)|index("CONFIGURE_GOALS")==null)
+            and (.recommendations|map(.ruleCode)|index("DATA_QUALITY_LIMITED")!=null)
+            and (.recommendations|map(.ruleCode)|index("ROAS_BELOW_TARGET")==null)' \
+            /tmp/adpilot-pr022-recommendations.json
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20&targetRoas=2&targetCpa=80' \
+            | jq -e '(.warnings|index("MANUAL_TARGET_OVERRIDES_LINKED_GOALS")!=null)
+              and .targetRoas==2 and .targetCpa==80'
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            -H 'Content-Type: application/json' \
+            --data '{"since":"2026-10-14","until":"2026-10-20"}' \
+            'http://127.0.0.1:18080/api/v1/analytics/recommendations/evaluations' >/tmp/adpilot-pr022-audit.json
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            "SELECT count(*) FROM analytics_recommendation WHERE product_goal_id='$PLAN_ID'")" -ge 1
+          # The Next.js route is guarded by Basic Auth and rejects writes without Origin.
+          test "$(curl -s -o /dev/null -w '%{http_code}' \
+            'http://127.0.0.1:13000/api/planning/catalog')" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -u admin:ci-local-admin-password-123 \
+            -H 'Content-Type: application/json' --data-binary @/tmp/adpilot-pr022-plan.json \
+            'http://127.0.0.1:13000/api/planning/goals')" = "403"
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:13000/api/planning/catalog' \
+            | jq -e '(.goals|length)==1 and (.campaigns|length)==1'
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:13000/planejamento' -o /tmp/adpilot-pr022-page.html
+          grep -Fq 'Produtos e campanhas' /tmp/adpilot-pr022-page.html
+          grep -Fq 'Associação manual' /tmp/adpilot-pr022-page.html
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:13000/recomendacoes?since=2026-10-14&until=2026-10-20' \
+            -o /tmp/adpilot-pr022-recommendations-ui.html
+          grep -Fq 'Vestido midi azul' /tmp/adpilot-pr022-recommendations-ui.html
+          # Explicit unlink never calls Meta and never removes the immutable plan.
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            -X DELETE 'http://127.0.0.1:18080/api/v1/planning/campaigns/123456/52596120828588/goal' \
+            | jq -e '.status=="UNLINKED"'
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            'SELECT count(*) FROM analytics_product_goal')" = "1"
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            'SELECT count(*) FROM analytics_campaign_goal')" = "0"
+
       - name: Collect Docker diagnostics on failure
         if: failure()
         run: docker compose ps && docker compose logs --tail=120
