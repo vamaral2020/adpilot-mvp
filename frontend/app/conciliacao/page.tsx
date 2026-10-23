@@ -145,28 +145,41 @@ export default async function ReconciliationPage({searchParams}:{
         <div className="historySectionHead">
           <div>
             <h2 id="reconciliation-ratios">Indicadores comparativos</h2>
-            <p>Somente quando há moeda compatível, registros identificados,
-              evidências suficientes de sincronização e cobertura Meta.</p>
+            <p>As atribuições da Meta não são pagamentos conciliados. Para métricas
+              financeiras sem vínculo por pedido, o AdPilot não presume causalidade.</p>
           </div>
           <span className="historySourceTag">Não auditado</span>
         </div>
         <div className="reconciliationRatios">
-          <div><small>Relação observada · receita da loja / gasto Meta</small>
-            <strong>{multiplier(mer)}</strong>
-            <p>Receita paga identificada ÷ gasto Meta.
-              Não comprova a receita integral da loja nem vendas geradas pelos anúncios.</p></div>
           <div><small>ROAS atribuído · Meta</small>
             <strong>{multiplier(metaRoas)}</strong>
-            <p>Receita atribuída pela Meta ÷ gasto Meta.
-              Não é ROAS real nem lucro.</p></div>
+            <p>Receita atribuída pela Meta ÷ gasto Meta. Um valor de zero
+              significa ausência de receita atribuída neste período,
+              não que os anúncios tenham gerado zero vendas na loja.</p></div>
+          <div><small>Pedidos da loja vinculados à publicidade</small>
+            <strong>Não identificados</strong>
+            <p>A integração atual não possui correspondência verificável entre
+              cada pedido pago e uma campanha Meta. Não é possível atribuir
+              os pagamentos identificados aos anúncios.</p></div>
           <div><small>Lucro / CAC / vendas orgânicas</small>
             <strong>Indisponível</strong>
             <p>Exigem custos completos, pagamentos auditados
               ou associação individual de origem dos pedidos.</p></div>
         </div>
-        {mer===null&&<p className="historySmall">
-          O MER não é exibido neste intervalo porque os critérios de comparação
-          ainda não foram satisfeitos. Isso não significa resultado igual a zero.
+        {mer!==null ? <details className="reconciliationMathDetails">
+          <summary>Consultar relação aritmética entre fontes (não é retorno publicitário)</summary>
+          <div className="reconciliationMathContent">
+            <p><strong>Relação observada · receita da loja / gasto Meta:</strong>{" "}
+              <span className="reconciliationMathValue">{multiplier(mer)}</span></p>
+            <p>Receita paga identificada de todos os canais ÷ gasto Meta no período.
+              Não comprova a receita integral da loja nem vendas geradas pelos anúncios.
+              O valor pode ser muito elevado quando o investimento é baixo, mesmo
+              sem nenhuma compra atribuída pela Meta.</p>
+          </div>
+        </details> : <p className="historySmall reconciliationMathUnavailable">
+          A relação aritmética entre fontes não é exibida porque os critérios
+          mínimos de comparação ainda não foram satisfeitos. Isso não significa
+          resultado igual a zero.
         </p>}
       </section>
 
