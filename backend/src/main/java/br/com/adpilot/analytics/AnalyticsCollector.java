@@ -2,6 +2,7 @@ package br.com.adpilot.analytics;
 
 import br.com.adpilot.integrations.meta.MetaAdsClient;
 import br.com.adpilot.integrations.meta.MetaInsightsMetrics;
+import br.com.adpilot.integrations.meta.MetaOutcomeMetrics;
 import br.com.adpilot.integrations.meta.MetaPage;
 import br.com.adpilot.integrations.meta.MetaSettings;
 import br.com.adpilot.integrations.nuvemshop.NuvemshopClient;
@@ -211,9 +212,12 @@ public class AnalyticsCollector {
                     throw new IllegalStateException("DUPLICATE_META_DAY");
                 }
                 MetaInsightsMetrics metrics = MetaInsightsMetrics.fromRow(item);
+                MetaOutcomeMetrics outcomes = MetaOutcomeMetrics.fromRow(item);
                 rows.add(new AnalyticsRecords.Meta(settings.accountId(),campaignId,day,
                         metrics.spend(),metrics.impressions(),metrics.clicks(),
-                        metrics.purchases(),metrics.purchaseValue(),currency));
+                        metrics.purchases(),metrics.purchaseValue(),currency,
+                        outcomes.linkClicks(),outcomes.landingPageViews(),
+                        outcomes.postEngagements(),outcomes.addToCarts()));
             }
             after = page.after();
             if (after == null) { exhausted = true; break; }
