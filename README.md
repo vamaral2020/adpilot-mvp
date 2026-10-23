@@ -1124,3 +1124,47 @@ Para verificar sem exibir pedidos:
 curl -fsS -u admin -X POST http://localhost:18080/api/v1/analytics/sync \
   | jq '.results[] | {provider,resource,status,code,fetched,stored}'
 ```
+
+
+### Diagnóstico temporário da listagem incremental Nuvemshop (opt-in)
+
+O erro recorrente `ORDER_LIST_HTTP_404` comprova a falha na listagem
+`GET /orders` com filtros, **não** na leitura individual de pedidos.
+A documentação oficial descreve `updated_at_min`, `updated_at_max`,
+`page`, `per_page` e `fields`, mas não demonstra como a loja responde
+a cada combinação de parâmetros. Não interprete um 404 como zero pedidos.
+
+Para comparar os status HTTP com a **mesma janela** do próximo sync,
+ative temporariamente no arquivo local `.env`:
+
+```ini
+ADPILOT_ORDER_LIST_DIAGNOSTICS_ENABLED=true
+```
+
+Recrie **somente a API** com `docker compose up -d --build api`, e execute:
+
+```bash
+curl -fsS -u admin -X POST \
+  'http://localhost:18080/api/v1/analytics/orders/listing-diagnostics' \
+  | jq '{cursorPresent,checks}'
+```
+
+A ferramenta testa em sequência, com respostas descartadas:
+
+1. `BASELINE_SAME_FIELDS`: mesmos campos e paginação, sem filtros de data;
+2. `RANGE_EXACT`: consulta exata de produção, com min/max e precisão integral;
+3. `LOWER_ONLY`: apenas `updated_at_min`;
+4. `UPPER_ONLY`: apenas `updated_at_max`;
+5. `RANGE_SECONDS`: min/max truncados para segundos UTC;
+6. `RANGE_MINIMAL_FIELDS`: min/max e somente `id,updated_at`;
+7. `RANGE_PER_PAGE_ONE`: min/max com `per_page=1`.
+
+A execução para ao receber HTTP 429 ou erro de transporte. Retorna apenas
+rótulos fixos e status HTTP, sem datas, IDs de pedidos, IDs da loja, tokens,
+URLs, payloads ou dados pessoais. **Não grava snapshots, cursor ou recibos
+de coleta**; não altera a Nuvemshop nem a Meta.
+
+**Após coletar o diagnóstico, volte a flag para false e recrie a API.**
+O endpoint permanece desabilitado por padrão. Uma correção do sincronizador
+deve ser feita apenas depois de reproduzir qual combinação é recusada; não
+suprimir 404 nem avançar checkpoint em janelas não confirmadas.
