@@ -34,5 +34,5 @@ test("states explain evidence rather than promise audited financial attribution"
   assert.match(comparisonTitle("INDICATIVE_ONLY"),/indicativa/i);
   assert.match(comparisonDescription("INSUFFICIENT_OBSERVATIONS"),/não significa/i);
   assert.match(comparisonDescription("CURRENCY_MISMATCH"),/conversão cambial/i);
-  assert.match(comparisonDescription("SYNC_EVIDENCE_INCOMPLETE"),/insuficientes/i);
+  assert.match(comparisonDescription("SYNC_EVIDENCE_INCOMPLETE"),/bloqueada/i);
 });
