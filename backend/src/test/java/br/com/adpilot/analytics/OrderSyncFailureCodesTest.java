@@ -53,6 +53,34 @@ class OrderSyncFailureCodesTest {
                         OrderSyncFailureCodes.Stage.PERSIST));
     }
 
+
+    @Test void differentiatesRecurringOrder404ByWhitelistedReadOperation() {
+        var list404 = new NuvemshopException(HttpStatus.BAD_GATEWAY,
+                "NUVEMSHOP_UPSTREAM_ERROR", "secret order URL and customer data", 404);
+        var detail404 = new NuvemshopException(HttpStatus.BAD_GATEWAY,
+                "NUVEMSHOP_ORDER_DETAIL_ERROR", "secret order URL and customer data", 404);
+        var unknown404 = new NuvemshopException(HttpStatus.BAD_GATEWAY,
+                "SECRET_DYNAMIC_PROVIDER_CODE", "secret order URL and customer data", 404);
+
+        assertEquals("ORDER_LIST_HTTP_404",
+                OrderSyncFailureCodes.classify(list404,OrderSyncFailureCodes.Stage.COLLECT));
+        assertEquals("ORDER_DETAIL_HTTP_404",
+                OrderSyncFailureCodes.classify(detail404,OrderSyncFailureCodes.Stage.COLLECT));
+        assertEquals("ORDER_API_HTTP_404",
+                OrderSyncFailureCodes.classify(unknown404,OrderSyncFailureCodes.Stage.COLLECT));
+        // Non-404 codes retain previous public contract to minimize behavioral change.
+        assertEquals("ORDER_API_HTTP_422",
+                OrderSyncFailureCodes.classify(
+                        new NuvemshopException(HttpStatus.BAD_GATEWAY,
+                                "NUVEMSHOP_UPSTREAM_ERROR","secret",422),
+                        OrderSyncFailureCodes.Stage.COLLECT));
+        for (var error: new RuntimeException[]{list404,detail404,unknown404}) {
+            var safe = OrderSyncFailureCodes.classify(error,OrderSyncFailureCodes.Stage.COLLECT);
+            assertTrue(safe.length() <= 64 && safe.matches("[A-Z0-9_]+"));
+            assertFalse(safe.contains("secret"));
+        }
+    }
+
     @Test void everyCategoryFitsPersistentErrorCodeColumn() {
         RuntimeException[] examples={
                 new IllegalStateException("ORDER_BEFORE_LOWER_BOUND"),
