@@ -1199,3 +1199,77 @@ na segunda página e `nextPageAdvertised=true`, investigue paginação.
 Se variar entre duas chamadas idênticas, investigue instabilidade ou
 respostas intermediárias. A resposta é evidência diagnóstica, **não**
 autorização para ignorar 404 ou avançar checkpoint.
+
+
+## Campanhas com múltiplos objetivos e formatos — PR 032
+
+O motor de recomendações agora seleciona as regras segundo o `objective` do
+**último snapshot de campanha Meta**, em vez de avaliar todos os objetivos
+pela quantidade de compras atribuídas:
+
+- `OUTCOME_SALES`: regras de CPA/ROAS, com metas **somente das campanhas
+  de vendas manualmente vinculadas**; mantém as proteções de amostra e cobertura.
+- `OUTCOME_TRAFFIC`: eventos `link_click`, `landing_page_view`
+  (com `omni_landing_page_view` somente como *fallback*) e custo por evento
+  a partir do investimento total observado; inclui `add_to_cart` como
+  informação complementar, **sem inferir vendas**.
+- `OUTCOME_ENGAGEMENT`: `post_engagement` e custo por interação.
+- Objetivos ainda não implementados ou sem objetivo identificado:
+  `UNSUPPORTED_CAMPAIGN_OBJECTIVE`; nenhuma regra financeira é presumida.
+
+Os eventos são extraídos dos `actions` que o AdPilot **já coletava**.
+A migration Flyway `V7__meta_multi_objective_metrics.sql` adiciona quatro
+colunas opcionais; `NULL` significa que o evento não veio no dia, **não zero**.
+Não há backfill fictício: execute a sincronização Meta existente após o deploy
+para preencher os dias disponíveis (janela dos últimos 30 dias completos).
+Eventos `omni_*` e seu correspondente principal **não são somados**, evitando
+a duplicação de contagens. O processamento das janelas continua transacional.
+
+### Inventário de formatos, conjuntos e otimização
+
+Nova tela local: `http://localhost:13000/formatos`, acessível também pelo
+menu da página inicial e pelas recomendações.
+
+Nova API autenticada, somente leitura e sob demanda:
+
+```bash
+curl -fsS -u admin \
+  'http://localhost:18080/api/v1/meta/campaigns/52597352471388/formats' \
+  | jq '{campaignId,complete,formatsFullyIdentified,adsets,ads}'
+```
+
+Consulta as duas arestas Meta **limitadas à campanha selecionada**:
+`/{campaignId}/adsets` e `/{campaignId}/ads` (até 5 páginas de 100
+itens cada). Os conjuntos informam `optimizationGoal` e
+`destinationType` quando reportados pela Meta. Os anúncios informam
+classificações conservadoras `IMAGE`, `VIDEO`, `CAROUSEL`, `CATALOG`,
+`DYNAMIC_ASSETS`, `LINK_OR_IMAGE` ou `UNKNOWN`.
+
+A classificação parte de metadados de cadastro, **não da variação final
+veiculada em cada posicionamento**. `formatsFullyIdentified=false`
+indica tipos dinâmicos ou desconhecidos; `complete=false` indica que
+o teto seguro de paginação foi atingido. O backend não retorna
+`object_story_spec`, `asset_feed_spec`, mídia, cópias de anúncio,
+destinos, textos ou tokens: somente identificadores, nomes e categorias
+allowlisted. A consulta **não altera anúncios nem persiste criativos**.
+
+### Homologar depois do merge
+
+```bash
+git checkout main && git pull --ff-only origin main
+docker compose up -d --build api web
+curl -fsS -u admin -X POST 'http://localhost:18080/api/v1/analytics/sync' \
+  | jq '.results[] | {provider,resource,status,code,fetched,stored}'
+curl -fsS -u admin \
+  'http://localhost:18080/api/v1/analytics/recommendations?since=2026-10-22&until=2026-10-22' \
+  | jq '.recommendations[] | {campaignName,ruleCode,actionCode,evidence}'
+curl -fsS -u admin \
+  'http://localhost:18080/api/v1/meta/campaigns/52597352471388/formats' \
+  | jq '{complete,formatsFullyIdentified,adsets,ads}'
+```
+
+A sincronização real pode reportar erro transitório da Nuvemshop sem afetar
+a coleta Meta bem-sucedida. Jamais tratar falha de coleta como dados zerados.
+O período de avaliação deve usar dias completos; indicadores exibidos para
+dia corrente podem mudar após a consolidação da Meta. Não existe
+conciliação de pedidos Nuvemshop com campanhas nesta PR, nem ação automática.

@@ -81,7 +81,7 @@ class RecommendationRuleEngineTest {
         assertTrue(report.recommendations().stream().allMatch(r ->
                 r.confidence().equals("LOW") && r.actionCode().equals("INVESTIGATE")));
         assertFalse(report.coverageVerified());
-        assertEquals(2, report.recommendations().getFirst().ruleVersion());
+        assertEquals(3, report.recommendations().getFirst().ruleVersion());
     }
 
     @Test void favorableTenPurchasesStillNeverRecommendsBudgetIncrease() {
@@ -307,4 +307,84 @@ class RecommendationRuleEngineTest {
         assertFalse(contains(report,"CPA_ABOVE_TARGET"));
     }
 
+
+    private static DailyCampaign objectiveRow(String objective, int day, String spend,
+            String purchaseCount, String linkClicks, String visits, String engagements) {
+        return new DailyCampaign("123","999","Campanha multiobjetivo","BRL",
+                START.plusDays(day),bd(spend),1000,100,bd(purchaseCount),bd("500"),
+                objective,linkClicks==null?null:bd(linkClicks),
+                visits==null?null:bd(visits),
+                engagements==null?null:bd(engagements),null);
+    }
+
+    @Test void trafficUsesLandingPageAndLinkCostWithoutSalesGoalWarningsOrPurchaseRules() {
+        var req=new Request(START,START.plusDays(6),null,null);
+        var rows=List.of(
+                objectiveRow("OUTCOME_TRAFFIC",0,"5.57","0","13","10",null),
+                objectiveRow("OUTCOME_TRAFFIC",1,"8.36","0","50","44",null));
+        var report=run(req,rows);
+        assertTrue(contains(report,"TRAFFIC_MONITOR"));
+        assertFalse(contains(report,"LOW_SAMPLE"));
+        assertFalse(contains(report,"CONFIGURE_GOALS"));
+        assertFalse(contains(report,"SPEND_WITHOUT_PURCHASES"));
+        assertFalse(report.warnings().contains("BUSINESS_GOALS_NOT_CONFIGURED"));
+        var advice=report.recommendations().getFirst();
+        assertEquals("MONITOR_ONLY",advice.actionCode());
+        assertEquals("INSUFFICIENT",advice.confidence());
+        var values=new java.util.HashMap<String,BigDecimal>();
+        advice.evidence().forEach(m->values.put(m.name(),m.value()));
+        assertEquals(bd("63"),values.get("LINK_CLICKS"));
+        assertEquals(bd("54"),values.get("LANDING_PAGE_VIEWS"));
+        assertEquals(bd("0.2211"),values.get("COST_PER_LINK_CLICK"));
+        assertEquals(bd("0.2580"),values.get("COST_PER_LANDING_PAGE_VIEW"));
+        assertFalse(values.containsKey("ROAS"));
+        assertFalse(values.containsKey("CPA"));
+    }
+
+    @Test void engagementIsNeverAssessedByNumberOfPurchases() {
+        var req=new Request(START,START.plusDays(6),null,null);
+        var rows=List.of(objectiveRow("OUTCOME_ENGAGEMENT",0,"20","0",
+                null,null,"100"));
+        var report=run(req,rows);
+        assertTrue(contains(report,"ENGAGEMENT_MONITOR"));
+        assertFalse(contains(report,"LOW_SAMPLE"));
+        assertFalse(contains(report,"CONFIGURE_GOALS"));
+        assertEquals("MONITOR_ONLY",report.recommendations().getFirst().actionCode());
+        assertEquals(bd("0.2000"),report.recommendations().getFirst().evidence()
+                .stream().filter(m->m.name().equals("COST_PER_POST_ENGAGEMENT"))
+                .findFirst().orElseThrow().value());
+    }
+
+    @Test void missingTrafficActionsDoNotBecomeZeroPerformance() {
+        var req=new Request(START,START.plusDays(6),null,null);
+        var report=run(req,List.of(objectiveRow("OUTCOME_TRAFFIC",0,"12","0",
+                null,null,null)));
+        assertTrue(contains(report,"TRAFFIC_METRICS_UNAVAILABLE"));
+        assertFalse(contains(report,"CONFIGURE_GOALS"));
+        assertFalse(contains(report,"LOW_SAMPLE"));
+        assertEquals("MONITOR_ONLY",report.recommendations().getFirst().actionCode());
+        assertTrue(report.recommendations().getFirst().evidence().stream()
+                .noneMatch(v->v.name().equals("LANDING_PAGE_VIEWS")));
+    }
+
+    @Test void unknownObjectiveIsNeverSilentlyTreatedAsSales() {
+        var req=new Request(START,START.plusDays(6),null,null);
+        var report=run(req,List.of(objectiveRow("OUTCOME_AWARENESS",0,"12","0",
+                null,null,null)));
+        assertTrue(contains(report,"UNSUPPORTED_CAMPAIGN_OBJECTIVE"));
+        assertFalse(contains(report,"LOW_SAMPLE"));
+        assertFalse(contains(report,"CONFIGURE_GOALS"));
+    }
+
+    @Test void linkForTrafficCampaignIsIgnoredInFinancialRuleEvaluation() {
+        var req=new Request(START,START.plusDays(6),null,null);
+        var report=engine.evaluate(req,List.of(objectiveRow("OUTCOME_TRAFFIC",0,"9","0",
+                "14","10",null)),new SyncState("SUCCEEDED",NOW),NOW,
+                quality(req,List.of(objectiveRow("OUTCOME_TRAFFIC",0,"9","0",
+                        "14","10",null)),true),
+                List.of(goal("999","Vestido","52.26","3.81")));
+        assertTrue(report.linkedGoals().isEmpty());
+        assertTrue(contains(report,"TRAFFIC_MONITOR"));
+        assertFalse(contains(report,"CONFIGURE_GOALS"));
+    }
 }

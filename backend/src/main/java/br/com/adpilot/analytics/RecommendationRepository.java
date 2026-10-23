@@ -26,11 +26,12 @@ public class RecommendationRepository {
         return jdbc.query("""
                 SELECT d.account_id,d.campaign_id,
                        COALESCE(NULLIF(c.campaign_name,''),d.campaign_id) campaign_name,
-                       d.currency,d.insight_day,d.spend,d.impressions,d.clicks,
-                       d.attributed_purchases,d.attributed_revenue
+                       c.objective,d.currency,d.insight_day,d.spend,d.impressions,d.clicks,
+                       d.attributed_purchases,d.attributed_revenue,
+                       d.link_clicks,d.landing_page_views,d.post_engagements,d.add_to_carts
                 FROM analytics_meta_insight_daily d
                 LEFT JOIN LATERAL (
-                    SELECT s.campaign_name
+                    SELECT s.campaign_name,s.objective
                     FROM analytics_meta_campaign_snapshot s
                     WHERE s.workspace_id=d.workspace_id AND s.account_id=d.account_id
                       AND s.campaign_id=d.campaign_id
@@ -45,7 +46,9 @@ public class RecommendationRepository {
                 rs.getObject("insight_day", LocalDate.class), rs.getBigDecimal("spend"),
                 rs.getLong("impressions"), rs.getLong("clicks"),
                 rs.getBigDecimal("attributed_purchases"),
-                rs.getBigDecimal("attributed_revenue")),
+                rs.getBigDecimal("attributed_revenue"),rs.getString("objective"),
+                rs.getBigDecimal("link_clicks"),rs.getBigDecimal("landing_page_views"),
+                rs.getBigDecimal("post_engagements"),rs.getBigDecimal("add_to_carts")),
                 AnalyticsSyncStore.WORKSPACE, since, until);
     }
 

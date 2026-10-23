@@ -18,5 +18,14 @@ public final class AnalyticsRecords {
 
     public record Meta(String accountId, String campaignId, LocalDate day,
             BigDecimal spend, long impressions, long clicks,
-            BigDecimal purchases, BigDecimal attributedRevenue, String currency) {}
+            BigDecimal purchases, BigDecimal attributedRevenue, String currency,
+            BigDecimal linkClicks, BigDecimal landingPageViews,
+            BigDecimal postEngagements, BigDecimal addToCarts) {
+        public Meta(String accountId, String campaignId, LocalDate day,
+                BigDecimal spend, long impressions, long clicks,
+                BigDecimal purchases, BigDecimal attributedRevenue, String currency) {
+            this(accountId,campaignId,day,spend,impressions,clicks,purchases,
+                    attributedRevenue,currency,null,null,null,null);
+        }
+    }
 }

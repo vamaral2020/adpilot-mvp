@@ -38,6 +38,13 @@ const metricLabels: Record<string,string> = {
   TARGET_CPA: "CPA máximo",
   LINKED_GOAL_CPA: "CPA do produto associado",
   LINKED_GOAL_ROAS: "ROAS do produto associado",
+  LINK_CLICKS:"Cliques no link",LANDING_PAGE_VIEWS:"Visualizações da página de destino",
+  COST_PER_LINK_CLICK:"Custo por clique no link",
+  COST_PER_LANDING_PAGE_VIEW:"Custo por visualização de destino",
+  ADD_TO_CART_EVENTS:"Adições ao carrinho atribuídas",
+  POST_ENGAGEMENTS:"Interações com publicações",
+  COST_PER_POST_ENGAGEMENT:"Custo por interação",
+  PRIMARY_METRIC_DAYS:"Dias com eventos principais informados",
   PERIOD_DAYS: "Dias selecionados",
   COLLECTED_DAYS: "Dias com consulta comprovada",
   UNCOLLECTED_DAYS: "Dias sem coleta comprovada",
@@ -46,7 +53,7 @@ const metricLabels: Record<string,string> = {
   CTR_RECENT_PCT: "CTR recente", CPC_PREVIOUS: "CPC anterior",
   CPC_RECENT: "CPC recente", CTR_PCT: "CTR", CPC: "CPC",
 };
-const moneyMetrics = new Set(["SPEND","ATTRIBUTED_REVENUE","CPA","TARGET_CPA","LINKED_GOAL_CPA","CPC_PREVIOUS","CPC_RECENT","CPC"]);
+const moneyMetrics = new Set(["SPEND","ATTRIBUTED_REVENUE","CPA","TARGET_CPA","LINKED_GOAL_CPA","CPC_PREVIOUS","CPC_RECENT","CPC","COST_PER_LINK_CLICK","COST_PER_LANDING_PAGE_VIEW","COST_PER_POST_ENGAGEMENT"]);
 const ratioMetrics = new Set(["ROAS","TARGET_ROAS","LINKED_GOAL_ROAS"]);
 const pctMetrics = new Set(["CTR_PREVIOUS_PCT","CTR_RECENT_PCT","CTR_PCT"]);
 function readableMetric(metric: Metric, currency: string | null): string {
@@ -111,6 +118,7 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
       <p className="calcRecommendationPrompt">
         Vai criar uma campanha? <Link href="/calculadora">Planeje seu CPA e ROAS a partir da margem do produto →</Link>
         {" · "}<Link href="/planejamento">Associar produtos às campanhas →</Link>
+        {" · "}<Link href="/formatos">Inspecionar formatos de anúncios →</Link>
       </p>
     </header>
     <div className="filterPanel">
@@ -186,7 +194,7 @@ export default async function RecommendationsPage({searchParams}:{searchParams:P
           O status das janelas consultadas não certifica a completude financeira da loja.</span>
       </div>
       {report.warnings.includes("BUSINESS_GOALS_NOT_CONFIGURED") &&
-        <p className="recommendationsHint">Há campanhas sem meta econômica associada.
+        <p className="recommendationsHint">Há campanhas de vendas sem meta econômica associada.
           <Link href="/planejamento"> Associe o produto correspondente </Link>
           ou informe CPA e/ou ROAS manualmente. O AdPilot não cria associações automaticamente.</p>}
       <section className="recommendationsList" aria-label="Recomendações por campanha">

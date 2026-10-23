@@ -15,7 +15,18 @@ public final class RecommendationModels {
 
     public record DailyCampaign(String accountId, String campaignId, String campaignName,
             String currency, LocalDate day, BigDecimal spend, long impressions,
-            long clicks, BigDecimal attributedPurchases, BigDecimal attributedRevenue) {}
+            long clicks, BigDecimal attributedPurchases, BigDecimal attributedRevenue,
+            String objective, BigDecimal linkClicks, BigDecimal landingPageViews,
+            BigDecimal postEngagements, BigDecimal addToCarts) {
+        /** Source-compatible fixtures for existing sales-rule tests. */
+        public DailyCampaign(String accountId, String campaignId, String campaignName,
+                String currency, LocalDate day, BigDecimal spend, long impressions,
+                long clicks, BigDecimal attributedPurchases, BigDecimal attributedRevenue) {
+            this(accountId,campaignId,campaignName,currency,day,spend,impressions,
+                    clicks,attributedPurchases,attributedRevenue,"OUTCOME_SALES",
+                    null,null,null,null);
+        }
+    }
 
     public record SyncState(String lastStatus, Instant lastSuccess) {}
 

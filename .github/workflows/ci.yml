@@ -176,6 +176,16 @@ jobs:
             "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='analytics_recommendation_evaluation'")" = "1"
           test "$(curl -s -o /dev/null -w '%{http_code}' -u admin:ci-local-admin-password-123 -X POST http://127.0.0.1:18080/api/v1/analytics/sync)" = "409"
           test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('analytics_sync_state','analytics_sync_run','analytics_order_snapshot','analytics_meta_insight_daily','analytics_audience_definition','analytics_recommendation','analytics_recommendation_evidence','analytics_meta_campaign_snapshot')")" = "8"
+          # PR 032: fixture must declare actual Meta objective instead of
+          # treating missing campaign metadata as an implicit sales objective.
+          docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U adpilot -d adpilot <<'SQL'
+          INSERT INTO analytics_meta_campaign_snapshot
+            (workspace_id,account_id,campaign_id,observed_day,campaign_name,
+             objective,status,effective_status,observed_at)
+          VALUES ('00000000-0000-4000-8000-000000000001','123456',
+                  '52596120828588','2026-10-20','Vendas fixture',
+                  'OUTCOME_SALES','ACTIVE','ACTIVE',now());
+          SQL
           # PR 021: a real PostgreSQL snapshot without full V5 receipts
           # must never generate ROAS/CPA investigative recommendations.
           docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U adpilot -d adpilot <<'SQL'
@@ -302,6 +312,37 @@ jobs:
             'SELECT count(*) FROM analytics_product_goal')" = "1"
           test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
             'SELECT count(*) FROM analytics_campaign_goal')" = "0"
+          # PR 032: V7 retains nullable action metrics, and traffic must never
+          # fall back to sales rules or demand product ROAS/CPA targets.
+          test "$(docker compose exec -T postgres psql -U adpilot -d adpilot -tAc \
+            "SELECT count(*) FROM flyway_schema_history WHERE version='7' AND success=true")" = "1"
+          docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U adpilot -d adpilot <<'SQL'
+          INSERT INTO analytics_meta_campaign_snapshot
+            (workspace_id,account_id,campaign_id,observed_day,campaign_name,
+             objective,status,effective_status,observed_at)
+          VALUES ('00000000-0000-4000-8000-000000000001','123456',
+                  '52597352471388','2026-10-20','Tráfego fixture',
+                  'OUTCOME_TRAFFIC','ACTIVE','ACTIVE',now());
+          INSERT INTO analytics_meta_insight_daily
+            (workspace_id,account_id,campaign_id,insight_day,spend,impressions,clicks,
+             attributed_purchases,attributed_revenue,currency,
+             link_clicks,landing_page_views,post_engagements,add_to_carts)
+          VALUES ('00000000-0000-4000-8000-000000000001','123456','52597352471388',
+                  '2026-10-20',13.93,2114,90,0,0,'BRL',63,54,NULL,1);
+          SQL
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:18080/api/v1/analytics/recommendations?since=2026-10-14&until=2026-10-20' \
+            | jq -e '[.recommendations[] | select(.campaignId=="52597352471388")
+              | select(.ruleCode=="TRAFFIC_MONITOR" and .actionCode=="MONITOR_ONLY")
+              | select((.evidence|map(.name)|index("LINK_CLICKS"))!=null)
+              | select((.evidence|map(.name)|index("LANDING_PAGE_VIEWS"))!=null)
+              | select((.evidence|map(.name)|index("CPA"))==null)] | length==1'
+          test "$(curl -s -o /dev/null -w '%{http_code}' \
+            http://127.0.0.1:13000/formatos)" = "401"
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:13000/formatos' -o /tmp/adpilot-pr032-formats.html
+          grep -Fq 'Objetivos e formatos dos anúncios' /tmp/adpilot-pr032-formats.html
+
 
       - name: Collect Docker diagnostics on failure
         if: failure()

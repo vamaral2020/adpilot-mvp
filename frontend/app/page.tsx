@@ -76,6 +76,7 @@ function Sidebar({ period }: { period: Period }) {
       <Link href="/" className="nav active"><Icon name="grid"/> Visão geral</Link>
       <Link href="#campanhas" className="nav"><Icon name="activity"/> Campanhas</Link>
       <Link href="/calculadora" className="nav"><Icon name="calculator"/> Planejar campanha</Link>
+      <Link href="/formatos" className="nav"><Icon name="layers"/> Objetivos e formatos</Link>
       <Link href={"/recomendacoes" + selectedPeriod} className="nav"><Icon name="spark"/> Recomendações</Link>
       <Link href={"/historico" + selectedPeriod} className="nav"><Icon name="chart"/> Histórico analítico</Link>
     </nav>
@@ -116,7 +117,17 @@ function RecommendationSpotlight({ preview, period }: {
   const purchases = spotlightMetric(focus,"ATTRIBUTED_PURCHASES");
   const roas = spotlightMetric(focus,"ROAS");
   const cpa = spotlightMetric(focus,"CPA");
-  const metricRows = [
+  const traffic=focus.ruleCode?.startsWith("TRAFFIC_")??false;
+  const engagement=focus.ruleCode?.startsWith("ENGAGEMENT_")??false;
+  const metricRows = traffic ? [
+    {label:"Cliques no link · histórico",value:number(spotlightMetric(focus,"LINK_CLICKS"),2)},
+    {label:"Visitas ao destino · histórico",value:number(spotlightMetric(focus,"LANDING_PAGE_VIEWS"),2)},
+    {label:"Custo por visita · histórico",value:money(spotlightMetric(focus,"COST_PER_LANDING_PAGE_VIEW"),focus.currency??"BRL")},
+  ] : engagement ? [
+    {label:"Interações · histórico",value:number(spotlightMetric(focus,"POST_ENGAGEMENTS"),2)},
+    {label:"Custo por interação · histórico",value:money(spotlightMetric(focus,"COST_PER_POST_ENGAGEMENT"),focus.currency??"BRL")},
+    {label:"Investimento · histórico",value:money(spotlightMetric(focus,"SPEND"),focus.currency??"BRL")},
+  ] : [
     { label:"Compras atribuídas · histórico",value:number(purchases,2) },
     { label:"ROAS atribuído · histórico",value:multiplier(roas) },
     { label:"CPA atribuído · histórico",value:money(cpa,focus.currency ?? "BRL") },
@@ -246,7 +257,10 @@ function CampaignTable({ summary, listing, currency }: {
         return <tr key={id}>
           <td data-label="Campanha"><div className="campaignCell"><span className="campaignAvatar"><Icon name="activity"/></span>
             <span className="campaignDetails"><strong>{c?.name ?? insight?.campaignName ?? id}</strong>
-              <small>ID {id}</small></span></div></td>
+              <small>ID {id} · {c?.objective==="OUTCOME_SALES"?"Vendas":
+                c?.objective==="OUTCOME_TRAFFIC"?"Tráfego":
+                c?.objective==="OUTCOME_ENGAGEMENT"?"Engajamento":
+                c?.objective??"Objetivo não informado"}</small></span></div></td>
           <td data-label="Status"><CampaignStatus campaign={c}/></td>
           <td data-label="Investimento"><div className="spendCell"><strong>{money(spend, currency)}</strong>
             <div className="tinyTrack"><span style={{width: highest && spend !== null
@@ -266,7 +280,7 @@ function CampaignTable({ summary, listing, currency }: {
       <p>Não foram encontrados dados para esse intervalo de datas.</p></div>}
     {listing?.after && <div className="tableFootnote">A lista de status mostra apenas a primeira página do catálogo de campanhas. Os Insights consolidados são independentes dela.</div>}
     {!media && <div className="tableFootnote" role="status">Participação no investimento e custo por compra ocultos: totais da Meta incompletos ou inconsistentes.</div>}
-    <div className="tableFootnote">Compras, receitas e custo por compra são atribuídos pela Meta; não correspondem a pedidos conciliados com a Nuvemshop. Status é o estado atual da campanha, não necessariamente o estado no período.</div>
+    <div className="tableFootnote">Compras, receitas e custo por compra são métricas de atribuição da Meta. Para campanhas de tráfego e engajamento, não são indicadores principais. O estado e o objetivo mostram o cadastro atual da campanha, não necessariamente a configuração histórica. <Link href="/formatos">Inspecionar otimização e criativos →</Link></div>
   </section>;
 }
 
@@ -295,7 +309,7 @@ function MediaAnalysisPanel({ meta, store, currency }: {
           <small>Gasto total Meta / compras atribuídas; não é CAC real.</small></div>
         <div><span>Gasto sem compras atribuídas · Meta</span>
           <strong>{money(media.spendWithoutAttributedPurchases, currency)}</strong>
-          <small>{number(media.campaignsWithoutAttributedPurchases)} campanha(s) com gasto e zero compras atribuídas.</small></div>
+          <small>{number(media.campaignsWithoutAttributedPurchases)} campanha(s) com gasto e zero compras atribuídas. Inclui objetivos de tráfego e engajamento; não representa campanhas ineficientes.</small></div>
         <div><span>Campanha de maior investimento</span>
           <strong className="analysisName">{media.topSpender?.name ?? "—"}</strong>
           <small>{media.topSpender ? money(media.topSpender.spend, currency)
