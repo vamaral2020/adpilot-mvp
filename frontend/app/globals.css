@@ -348,6 +348,8 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
   .campaignPanel .tinyTrack{width:min(100%,96px)}
 }
 @media print{
+  /* The Next.js development indicator must never appear in exported reports. */
+  nextjs-portal{display:none!important}
   @page{size:A4;margin:12mm}
   html,body{color:#17263a!important;background:#fff!important;font-size:11px!important}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -922,6 +924,12 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
     min-width:0!important;
     max-width:none!important;
   }
+  /* Unlike cells, nested campaign names have an explicit pale-blue screen color. */
+  .reconciliationPage .historyCampaignTable td:first-child strong {
+    color:#172d45!important;
+    font-size:9px!important;
+    line-height:1.3!important;
+  }
   .reconciliationPage .historyCampaignId {
     color:#5a7189!important;
     font-size:8px!important;
@@ -933,6 +941,15 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
   .reconciliationPage section[aria-labelledby="reconciliation-daily"]
   .historyCampaignTable th:first-child {
     width:19%!important;
+  }
+  /* Do not leave the daily table title orphaned on the preceding sheet. */
+  .reconciliationPage section[aria-labelledby="reconciliation-daily"] {
+    break-inside:avoid-page;
+    page-break-inside:avoid;
+  }
+  .reconciliationPage section[aria-labelledby="reconciliation-campaigns"] .historySectionHead {
+    break-after:avoid-page;
+    page-break-after:avoid;
   }
   .reconciliationPage .historyCoverageMetrics {
     grid-template-columns:repeat(4,minmax(0,1fr))!important;
