@@ -89,6 +89,22 @@ public class MetaAdsClient {
     }
 
     /**
+     * Prevent an authorized multi-account Meta token from being used to inspect
+     * campaigns outside the configured AdPilot account.
+     */
+    public boolean belongsToConfiguredAccount(String campaignId) {
+        validateCampaignId(campaignId);
+        var campaign=getCampaign(campaignId,"",Map.of("fields","id,account_id"));
+        Object owner=campaign.get("account_id");
+        Object id=campaign.get("id");
+        if(owner==null || id==null || !campaignId.equals(String.valueOf(id)))
+            return false;
+        String account=String.valueOf(owner);
+        if(account.startsWith("act_")) account=account.substring(4);
+        return account.equals(settings.accountId());
+    }
+
+    /**
      * A campaign-scoped, read-only view of ad sets, including the optimization
      * goal and destination. Never include audience targeting or user data.
      */
@@ -150,7 +166,8 @@ public class MetaAdsClient {
             throw new MetaApiException(HttpStatus.SERVICE_UNAVAILABLE,"META_NOT_CONFIGURED",
                     "Configure a conta Meta e o token de acesso.");
         }
-        return getPath("/"+settings.version()+"/"+campaignId+"/"+edge,query);
+        return getPath("/"+settings.version()+"/"+campaignId+
+                (edge.isBlank()?"":"/"+edge),query);
     }
 
     private Map<String,Object> getPath(String path,Map<String,?> query) {
