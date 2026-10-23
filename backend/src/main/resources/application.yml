@@ -44,3 +44,4 @@ adpilot:
   analytics:
     sync-enabled: ${ADPILOT_ANALYTICS_SYNC_ENABLED:false}
     sync-cron: ${ADPILOT_ANALYTICS_SYNC_CRON:0 5 */3 * * *}
+    order-list-diagnostics-enabled: ${ADPILOT_ORDER_LIST_DIAGNOSTICS_ENABLED:false}
