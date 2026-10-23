@@ -138,6 +138,8 @@ class MetaAdsClientTest {
             assertTrue(paths.get(0).startsWith("/v26.0/52597352471388/adsets?"));
             assertTrue(paths.get(1).startsWith("/v26.0/52597352471388/ads?"));
             assertTrue(paths.get(1).contains("creative%7Bid%2Cobject_type"));
+            assertTrue(paths.get(1).contains("product_set_id"));
+            assertFalse(paths.get(1).contains("secret"));
             assertTrue(paths.stream().noneMatch(x->x.contains("fake-secret")));
         }finally{server.stop(0);}
     }
