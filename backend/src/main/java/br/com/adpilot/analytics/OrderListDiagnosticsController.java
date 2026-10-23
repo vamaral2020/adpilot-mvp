@@ -56,4 +56,26 @@ public class OrderListDiagnosticsController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(new DiagnosticReport(cursor!=null,result));
     }
+
+    public record FollowupReport(boolean cursorPresent, boolean nextPageAdvertised,
+            boolean totalExceedsPage, List<NuvemshopClient.OrderListProbe> checks) {}
+
+    @PostMapping("/listing-diagnostics/followup")
+    public ResponseEntity<FollowupReport> followup() {
+        if (!enabled)
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Diagnostico temporario desabilitado.");
+        if (!"CONNECTED".equals(shopAuth.status().status()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A loja precisa estar conectada.");
+        Instant upper=Instant.now().minusSeconds(300);
+        Instant cursor=store.cursor("NUVEMSHOP","ORDERS");
+        Instant lower=cursor==null?upper.minusSeconds(30L*86400):cursor.minusSeconds(600);
+        if (!lower.isBefore(upper))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"Janela de coleta invalida.");
+        var report=client.probeOrderListFollowup(lower,upper);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(new FollowupReport(cursor!=null,report.nextPageAdvertised(),
+                        report.totalExceedsPage(),report.checks()));
+    }
 }

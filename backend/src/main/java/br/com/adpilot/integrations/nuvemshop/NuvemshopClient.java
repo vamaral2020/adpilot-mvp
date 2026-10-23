@@ -233,6 +233,98 @@ public class NuvemshopClient {
         return List.copyOf(results);
     }
 
+    /**
+     * Bounded follow-up probe: same two date representations are each repeated
+     * against page 1. Page 2 is requested ONLY when the exact page-1 response
+     * advertises it via Link or a validated total count. All upstream bodies
+     * are discarded; returned diagnostics never contain request URLs or data.
+     */
+    public record OrderListFollowup(boolean nextPageAdvertised,
+            boolean totalExceedsPage, List<OrderListProbe> checks) {}
+
+    private record ProbeStatus(Integer status, boolean hasNext,
+            boolean countOverPage, boolean transportFailure) {}
+
+    public OrderListFollowup probeOrderListFollowup(Instant since, Instant until) {
+        if (since == null || until == null || !since.isBefore(until))
+            throw new NuvemshopException(HttpStatus.BAD_REQUEST,"INVALID_SYNC_WINDOW",
+                    "Janela de diagnostico invalida.");
+        var installation = repository.installation().orElseThrow(() ->
+                new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "NUVEMSHOP_NOT_CONNECTED","Conecte a loja antes do diagnostico."));
+        String token = crypto.decrypt(installation.tokenEncrypted());
+        var exact = Map.of("updated_at_min",since.toString(),
+                "updated_at_max",until.toString());
+        var seconds = Map.of(
+                "updated_at_min",since.truncatedTo(ChronoUnit.SECONDS).toString(),
+                "updated_at_max",until.truncatedTo(ChronoUnit.SECONDS).toString());
+        var checks = new ArrayList<OrderListProbe>();
+
+        ProbeStatus first = probeStatusOnly(installation.storeId(), token, 1, exact);
+        checks.add(safeProbeResult("EXACT_PAGE_1",first));
+        if (first.transportFailure() || Integer.valueOf(429).equals(first.status()))
+            return new OrderListFollowup(first.hasNext(),first.countOverPage(),List.copyOf(checks));
+
+        ProbeStatus shortened = probeStatusOnly(installation.storeId(), token, 1, seconds);
+        checks.add(safeProbeResult("SECONDS_PAGE_1",shortened));
+        if (shortened.transportFailure() || Integer.valueOf(429).equals(shortened.status()))
+            return new OrderListFollowup(first.hasNext(),first.countOverPage(),List.copyOf(checks));
+
+        ProbeStatus exactRepeat = probeStatusOnly(installation.storeId(), token, 1, exact);
+        checks.add(safeProbeResult("EXACT_PAGE_1_REPEAT",exactRepeat));
+        if (exactRepeat.transportFailure() || Integer.valueOf(429).equals(exactRepeat.status()))
+            return new OrderListFollowup(first.hasNext(),first.countOverPage(),List.copyOf(checks));
+
+        ProbeStatus secondsRepeat = probeStatusOnly(installation.storeId(), token, 1, seconds);
+        checks.add(safeProbeResult("SECONDS_PAGE_1_REPEAT",secondsRepeat));
+        if (secondsRepeat.transportFailure() || Integer.valueOf(429).equals(secondsRepeat.status()))
+            return new OrderListFollowup(first.hasNext(),first.countOverPage(),List.copyOf(checks));
+
+        // A page-2 request without upstream evidence of a next page is not
+        // meaningful and can return 404 for a non-existent page.
+        if (Integer.valueOf(200).equals(first.status())
+                && (first.hasNext() || first.countOverPage())) {
+            ProbeStatus next = probeStatusOnly(installation.storeId(),token,2,exact);
+            checks.add(safeProbeResult("EXACT_PAGE_2",next));
+        }
+        return new OrderListFollowup(first.hasNext(),first.countOverPage(),List.copyOf(checks));
+    }
+
+    private OrderListProbe safeProbeResult(String label, ProbeStatus result) {
+        return new OrderListProbe(label,
+                result.transportFailure() ? "TRANSPORT_FAILURE" : "HTTP_STATUS",
+                result.status());
+    }
+
+    private ProbeStatus probeStatusOnly(String storeId,String token,int page,
+                                        Map<String,String> filters) {
+        URI uri=readUri("orders",ORDER_SYNC_FIELDS,page,100,storeId,filters);
+        try {
+            var response=client.get().uri(uri)
+                    .header(HttpHeaders.AUTHORIZATION,"Bearer "+token)
+                    .header(HttpHeaders.USER_AGENT,settings.userAgent())
+                    .retrieve().toBodilessEntity();
+            String link=response.getHeaders().getFirst(HttpHeaders.LINK);
+            boolean hasNext=link!=null && (
+                    link.contains("rel=\"next\"") || link.contains("rel=next"));
+            String count=response.getHeaders().getFirst("x-total-count");
+            boolean countOverPage=false;
+            if (count!=null && count.matches("[0-9]{1,9}")) {
+                try {
+                    countOverPage=Long.parseLong(count)>100L;
+                } catch (NumberFormatException ignored) {
+                    // Invalid upstream totals must not be trusted.
+                }
+            }
+            return new ProbeStatus(response.getStatusCode().value(),hasNext,
+                    countOverPage,false);
+        } catch (RestClientResponseException e) {
+            return new ProbeStatus(e.getStatusCode().value(),false,false,false);
+        } catch (RestClientException e) {
+            return new ProbeStatus(null,false,false,true);
+        }
+    }
+
     /** URI builder shared with production order-list reads for exact comparisons. */
     private URI readUri(String resource,String fields,int page,int perPage,
                         String storeId,Map<String,String> filters) {

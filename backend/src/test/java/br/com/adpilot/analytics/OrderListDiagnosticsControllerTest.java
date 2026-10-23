@@ -50,4 +50,25 @@ class OrderListDiagnosticsControllerTest {
         verify(store,never()).saveOrders(anyLong(),anyList(),any(),any(),anyInt());
         verify(store,never()).begin(anyString(),anyString());
     }
+
+    @Test void followupEndpointKeepsGateAndOnlyReturnsSafeProviderStatuses() {
+        Instant cursor=Instant.parse("2026-10-22T21:10:16Z");
+        when(auth.status()).thenReturn(new NuvemshopAuthService.Status(
+                "CONNECTED",true,"123","read_orders",cursor));
+        when(store.cursor("NUVEMSHOP","ORDERS")).thenReturn(cursor);
+        var checks=List.of(
+                new NuvemshopClient.OrderListProbe("EXACT_PAGE_1","HTTP_STATUS",200),
+                new NuvemshopClient.OrderListProbe("SECONDS_PAGE_1","HTTP_STATUS",404));
+        when(client.probeOrderListFollowup(eq(cursor.minusSeconds(600)),any()))
+                .thenReturn(new NuvemshopClient.OrderListFollowup(false,false,checks));
+
+        var result=new OrderListDiagnosticsController(store,client,auth,true).followup();
+
+        assertEquals("no-store",result.getHeaders().getCacheControl());
+        assertTrue(result.getBody().cursorPresent());
+        assertFalse(result.getBody().nextPageAdvertised());
+        assertEquals(checks,result.getBody().checks());
+        verify(store,never()).saveOrders(anyLong(),anyList(),any(),any(),anyInt());
+    }
+
 }

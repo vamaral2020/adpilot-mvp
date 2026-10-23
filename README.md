@@ -1168,3 +1168,34 @@ de coleta**; não altera a Nuvemshop nem a Meta.
 O endpoint permanece desabilitado por padrão. Uma correção do sincronizador
 deve ser feita apenas depois de reproduzir qual combinação é recusada; não
 suprimir 404 nem avançar checkpoint em janelas não confirmadas.
+
+
+#### Diagnóstico complementar — precisão de datas e próxima página
+
+O diagnóstico inicial pode encontrar `RANGE_EXACT=200` e
+`RANGE_SECONDS=404`. Isso **não prova** que os milissegundos sejam a
+causa do erro da sincronização: o teste inicial cobre apenas a página 1.
+
+Use, com a mesma flag temporária habilitada, o teste complementar:
+
+```bash
+curl -fsS -u admin -X POST \
+  'http://localhost:18080/api/v1/analytics/orders/listing-diagnostics/followup' \
+  | jq '{cursorPresent,nextPageAdvertised,totalExceedsPage,checks}'
+```
+
+O teste compara duas execuções da mesma janela com timestamps exatos e
+duas com timestamps truncados, sempre na primeira página. Também consulta
+`EXACT_PAGE_2` **somente se** a resposta exata da primeira página indicar
+próxima página pelo `Link` ou por `x-total-count > 100`. No máximo
+cinco chamadas GET de leitura, interrompidas em 429 ou erro de transporte.
+Não consome nem retorna conteúdo de pedidos, URLs do provedor, identificadores
+de loja, dados pessoais ou token. Não grava dados nem cursores.
+Desabilite `ADPILOT_ORDER_LIST_DIAGNOSTICS_ENABLED` após uso.
+
+Interpretação: se o 404 ocorrer somente nas variantes sem frações de
+segundo e se repetir, investigue formato ou parsing de data. Se ocorrer
+na segunda página e `nextPageAdvertised=true`, investigue paginação.
+Se variar entre duas chamadas idênticas, investigue instabilidade ou
+respostas intermediárias. A resposta é evidência diagnóstica, **não**
+autorização para ignorar 404 ou avançar checkpoint.
