@@ -306,7 +306,7 @@ public class NuvemshopClient {
                     .retrieve().toBodilessEntity();
             String link=response.getHeaders().getFirst(HttpHeaders.LINK);
             boolean hasNext=link!=null && (
-                    link.contains("rel=\\\"next\\\"") || link.contains("rel=next"));
+                    link.contains("rel=\"next\"") || link.contains("rel=next"));
             String count=response.getHeaders().getFirst("x-total-count");
             boolean countOverPage=false;
             if (count!=null && count.matches("[0-9]{1,9}")) {
