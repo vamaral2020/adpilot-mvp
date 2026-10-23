@@ -129,11 +129,13 @@ public class AnalyticsSyncStore {
             jdbc.update("""
                     INSERT INTO analytics_meta_insight_daily
                     (workspace_id,account_id,campaign_id,insight_day,spend,impressions,clicks,
-                     attributed_purchases,attributed_revenue,currency)
-                    VALUES (?,?,?,?,?,?,?,?,?,?)
+                     attributed_purchases,attributed_revenue,currency,
+                     link_clicks,landing_page_views,post_engagements,add_to_carts)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """, WORKSPACE,row.accountId(),row.campaignId(),row.day(),
                     row.spend(),row.impressions(),row.clicks(),row.purchases(),
-                    row.attributedRevenue(),row.currency());
+                    row.attributedRevenue(),row.currency(),row.linkClicks(),
+                    row.landingPageViews(),row.postEngagements(),row.addToCarts());
         }
         // Only fully fetched windows are persisted, atomically with their rows and state.
         jdbc.update("""
