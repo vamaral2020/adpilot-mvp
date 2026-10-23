@@ -51,7 +51,7 @@ export default async function ReconciliationPage({searchParams}:{
     ? value.indicativeAttributedRoas:null;
   const metaCoverage=value?.coverage?.meta;
 
-  return <main className="historyShell">
+  return <main className="historyShell reconciliationPage">
     <nav className="historyNav">
       <Link href="/">← Visão geral</Link>
       <strong>AdPilot / Conciliação comercial</strong>
@@ -151,10 +151,10 @@ export default async function ReconciliationPage({searchParams}:{
           <span className="historySourceTag">Não auditado</span>
         </div>
         <div className="reconciliationRatios">
-          <div><small>MER indicativo · snapshots</small>
+          <div><small>Relação observada · receita da loja / gasto Meta</small>
             <strong>{multiplier(mer)}</strong>
             <p>Receita paga identificada ÷ gasto Meta.
-              Não comprova a receita integral da loja.</p></div>
+              Não comprova a receita integral da loja nem vendas geradas pelos anúncios.</p></div>
           <div><small>ROAS atribuído · Meta</small>
             <strong>{multiplier(metaRoas)}</strong>
             <p>Receita atribuída pela Meta ÷ gasto Meta.
