@@ -1273,3 +1273,70 @@ a coleta Meta bem-sucedida. Jamais tratar falha de coleta como dados zerados.
 O período de avaliação deve usar dias completos; indicadores exibidos para
 dia corrente podem mudar após a consolidação da Meta. Não existe
 conciliação de pedidos Nuvemshop com campanhas nesta PR, nem ação automática.
+
+
+## Inventário de recursos criativos dinâmicos — PR 033
+
+O endpoint existente `GET /api/v1/meta/campaigns/{campaignId}/formats`
+passa a apresentar `ads[].assetComposition`, mantendo os campos e
+as proteções do PR 032. Exemplo de inspeção da campanha de tráfego:
+
+```bash
+curl -fsS -u admin \
+  'http://localhost:18080/api/v1/meta/campaigns/52597352471388/formats' \
+  | jq '{
+      complete,
+      formatsFullyIdentified,
+      ads: [.ads[] | {
+        name, format,
+        assetComposition: {
+          dynamicAssetFeed: .assetComposition.dynamicAssetFeed,
+          imageAssetCount: .assetComposition.imageAssetCount,
+          videoAssetCount: .assetComposition.videoAssetCount,
+          carouselVariantCount: .assetComposition.carouselVariantCount,
+          carouselCardCount: .assetComposition.carouselCardCount,
+          declaredFormats: .assetComposition.declaredFormats,
+          mixedImageVideoAssets: .assetComposition.mixedImageVideoAssets,
+          carouselStructureDetected: .assetComposition.carouselStructureDetected,
+          catalogReferenceDetected: .assetComposition.catalogReferenceDetected,
+          notes: .assetComposition.notes
+        }
+      }]
+    }'
+```
+
+**Semântica de dados:** contagens representam **entradas de configuração**
+em `asset_feed_spec.images`, `videos`, `carousels` e nas
+`child_attachments` explicitamente presentes. Não equivalem a arquivos
+únicos, publicações distintas, anúncios entregues ou resultados reais.
+`null` = lista não reportada; `0` = lista explicitamente vazia.
+O total de cartões só é informado quando todas as variantes de carrossel
+reportaram suas listas de anexos; não inventamos cartões ausentes.
+
+`declaredFormats` mantém somente os códigos reconhecidos
+`SINGLE_IMAGE`, `SINGLE_VIDEO`, `CAROUSEL`, `COLLECTION`.
+Valores desconhecidos da Meta são omitidos da resposta e sinalizados em
+`notes`, nunca propagados como texto bruto. `catalogReferenceDetected`
+indica somente estrutura compatível, por exemplo `product_set_id`,
+`product_data` ou `template_data`; **não comprova catálogo servido**.
+`carouselStructureDetected` indica `carousels`, cartões ou formato
+declarado, **não comprova carrossel veiculado**. Em ativos dinâmicos,
+`formatsFullyIdentified` permanece `false` mesmo quando existem
+contagens e formatos declarados: a apresentação final pode variar.
+
+A tela local `http://localhost:13000/formatos` apresenta os mesmos
+sinais por anúncio e distingue `Não informado` de zero. Não retorna
+URLs, nomes de arquivos, hashes, IDs de vídeo, textos ou conteúdo bruto
+dos criativos; nenhuma migration, gravação ou mutação Meta é necessária.
+
+Referências técnicas para os campos inspecionados:
+- Meta Business SDK, `AdAssetFeedSpec` (`images`, `videos`,
+  `carousels`, `ad_formats`):
+  https://github.com/facebook/facebook-business-sdk-codegen/blob/main/api_specs/specs/AdAssetFeedSpec.json
+- Meta Business SDK, `AdCreative` (`product_set_id` e
+  `asset_feed_spec`):
+  https://github.com/facebook/facebook-nodejs-business-sdk/blob/main/src/objects/ad-creative.js
+
+Após o merge: `git pull --ff-only origin main` e
+`docker compose up -d --build api web`. **Não é preciso executar sync**:
+a inspeção consulta a Meta sob demanda e não altera cursores.
