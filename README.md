@@ -1451,3 +1451,39 @@ Não há migration nem reprocessamento de pedidos nesta PR.
 `/api/v1/analytics/sync` continua sendo a rotina independente e
 explicitamente solicitada de coleta. A PR mantém as regras de
 vendas/tráfego/engajamento e as proteções de acesso existentes.
+
+
+## PR 036 — legibilidade e exportação da conciliação comercial
+
+Revisão visual a partir de um PDF real de quatro páginas exportado pelo
+navegador em 23/10/2026. Os valores financeiros foram apresentados,
+mas o CSS de impressão global definia texto escuro enquanto os painéis
+históricos mantinham fundos escuros: títulos, MER e outros números
+ficavam quase invisíveis, e a largura mínima de 770px das tabelas
+causava colunas cortadas na impressão A4.
+
+Esta alteração introduz um seletor dedicado `reconciliationPage` e
+**somente dentro de `@media print`** usa fundo branco e texto escuro
+em todos os painéis, reduz a altura/padding dos cartões, organiza os
+painéis em duas colunas compactas e faz as tabelas caberem na página
+com quebra de linha. A aparência normal no navegador, backend, dados
+e fórmulas não são alterados.
+
+O cartão de índice mostra explicitamente
+**"Relação observada · receita da loja / gasto Meta"**, acompanhado
+de uma nota avisando que a razão não comprova vendas produzidas pela
+publicidade. Não modifica o cálculo do MER nem seu status não auditado.
+
+**Homologar após revisão e merge manual:**
+
+```bash
+git checkout main && git pull --ff-only origin main
+docker compose up -d --build web
+```
+
+Abra `http://localhost:13000/conciliacao?since=2026-10-20&until=2026-10-22`,
+use **Imprimir > Salvar como PDF > A4**. Desmarque **Cabeçalhos e rodapés**
+do navegador se desejar o documento sem data/URL nas margens. Verifique
+a legibilidade do título "Comparação indicativa disponível", o índice,
+todas as cinco colunas da tabela diária e todas as colunas da tabela
+de campanhas. A impressão não altera pedidos, tokens ou campanhas.
