@@ -32,7 +32,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class RecommendationRuleEngine {
-    public static final int RULE_VERSION = 2;
+    public static final int RULE_VERSION = 3;
     private static final BigDecimal ZERO = BigDecimal.ZERO;
     private static final BigDecimal FIVE = BigDecimal.valueOf(5);
     private static final BigDecimal TEN = BigDecimal.TEN;
@@ -51,7 +51,7 @@ public class RecommendationRuleEngine {
             SyncState sync, Instant generatedAt, DataQuality quality,
             List<LinkedGoal> linkedGoals) {
         var keys=new HashSet<String>();
-        for(var row:data) if("BRL".equals(row.currency()))
+        for(var row:data) if("BRL".equals(row.currency()) && "OUTCOME_SALES".equals(row.objective()))
             keys.add(row.accountId()+":"+row.campaignId());
         var accepted=new LinkedHashMap<String,LinkedGoal>();
         for(var goal:linkedGoals) {
@@ -85,10 +85,14 @@ public class RecommendationRuleEngine {
         if (!quality.analysisEligible())
             warnings.add("RECOMMENDATIONS_DATA_QUALITY_LIMITED");
         boolean noManualGoals=request.targetRoas()==null && request.targetCpa()==null;
-        boolean missingGoals=data.isEmpty() || data.stream().anyMatch(r ->
-                !accepted.containsKey(r.accountId()+":"+r.campaignId()));
+        boolean missingGoals=data.isEmpty() || data.stream()
+                .filter(r -> "OUTCOME_SALES".equals(r.objective()))
+                .anyMatch(r -> !accepted.containsKey(r.accountId()+":"+r.campaignId()));
         if(noManualGoals && missingGoals)
             warnings.add("BUSINESS_GOALS_NOT_CONFIGURED");
+        if(!noManualGoals && data.stream().anyMatch(r ->
+                !"OUTCOME_SALES".equals(r.objective())))
+            warnings.add("FINANCIAL_TARGETS_NOT_APPLICABLE_TO_NON_SALES");
         if(!appliedGoals.isEmpty()) warnings.add("MANUALLY_LINKED_PRODUCT_GOALS");
         if(!appliedGoals.isEmpty() && !noManualGoals)
             warnings.add("MANUAL_TARGET_OVERRIDES_LINKED_GOALS");
@@ -130,6 +134,7 @@ public class RecommendationRuleEngine {
         String account = first.accountId(), campaign = first.campaignId();
         String name = first.campaignName();
         String currency = first.currency();
+        String objective = first.objective();
         LinkedGoal linked="BRL".equals(currency) ? goals.get(account+":"+campaign) : null;
         Request effectiveRequest=new Request(request.since(),request.until(),
                 request.targetRoas()!=null ? request.targetRoas()
@@ -138,7 +143,8 @@ public class RecommendationRuleEngine {
                         : linked==null ? null : linked.targetCpa());
         Set<LocalDate> dates = new HashSet<>();
         for (DailyCampaign row : rows) {
-            if (!Objects.equals(currency,row.currency()) || !dates.add(row.day())
+            if (!Objects.equals(currency,row.currency()) || !Objects.equals(objective,row.objective())
+                    || !dates.add(row.day())
                     || !valid(row,request)) {
                 return List.of(advice("INVALID_CAMPAIGN_DATA",account,campaign,name,null,
                         "MEDIUM","INSUFFICIENT","REVIEW_DATA",
@@ -147,6 +153,18 @@ public class RecommendationRuleEngine {
                         + "Nenhum cálculo financeiro foi utilizado para sugerir uma ação.",
                         List.of(),List.of("CAMPAIGN_DATA_INVALID")));
             }
+        }
+        if ("OUTCOME_TRAFFIC".equals(objective))
+            return List.of(outcomeAdvice(rows,quality,true));
+        if ("OUTCOME_ENGAGEMENT".equals(objective))
+            return List.of(outcomeAdvice(rows,quality,false));
+        if (!"OUTCOME_SALES".equals(objective)) {
+            return List.of(advice("UNSUPPORTED_CAMPAIGN_OBJECTIVE",account,campaign,name,currency,
+                    "LOW","INSUFFICIENT","REVIEW_DATA",
+                    "Objetivo da campanha ainda não suportado",
+                    "Não foi possível selecionar indicadores específicos para este objetivo. "
+                    + "Nenhuma regra financeira foi aplicada ou presumida.",
+                    List.of(),List.of("OBJECTIVE_NOT_VERIFIED")));
         }
         BigDecimal spend = ZERO, purchases = ZERO, revenue = ZERO;
         long impressions = 0, clicks = 0;
@@ -331,6 +349,89 @@ public class RecommendationRuleEngine {
         return out;
     }
 
+
+    /**
+     * Traffic and engagement objectives must never be graded by sales CPA,
+     * ROAS or number of purchases. Null action counts are unknown, not zero.
+     */
+    private Advice outcomeAdvice(List<DailyCampaign> rows,DataQuality quality,boolean traffic) {
+        var first=rows.getFirst();
+        BigDecimal spend=ZERO;
+        long impressions=0,clicks=0;
+        BigDecimal primary=null,secondary=null,addToCarts=null;
+        int primaryDays=0,secondaryDays=0;
+        for(var row:rows) {
+            spend=spend.add(row.spend());
+            impressions=Math.addExact(impressions,row.impressions());
+            clicks=Math.addExact(clicks,row.clicks());
+            BigDecimal value=traffic?row.landingPageViews():row.postEngagements();
+            BigDecimal other=traffic?row.linkClicks():null;
+            if(value!=null) {
+                primary=primary==null?value:primary.add(value);
+                primaryDays++;
+            }
+            if(other!=null) {
+                secondary=secondary==null?other:secondary.add(other);
+                secondaryDays++;
+            }
+            if(row.addToCarts()!=null)
+                addToCarts=addToCarts==null?row.addToCarts():addToCarts.add(row.addToCarts());
+        }
+        var evidence=new ArrayList<Metric>(List.of(
+                metric("SPEND",spend),metric("IMPRESSIONS",impressions),
+                metric("CLICKS",clicks),metric("OBSERVED_DAYS",rows.size())));
+        if(traffic) {
+            if(secondary!=null) {
+                evidence.add(metric("LINK_CLICKS",secondary));
+                if(secondary.signum()>0)
+                    evidence.add(metric("COST_PER_LINK_CLICK",ratio(spend,secondary)));
+            }
+            if(primary!=null) {
+                evidence.add(metric("LANDING_PAGE_VIEWS",primary));
+                if(primary.signum()>0)
+                    evidence.add(metric("COST_PER_LANDING_PAGE_VIEW",ratio(spend,primary)));
+            }
+            if(addToCarts!=null) evidence.add(metric("ADD_TO_CART_EVENTS",addToCarts));
+        } else if(primary!=null) {
+            evidence.add(metric("POST_ENGAGEMENTS",primary));
+            if(primary.signum()>0)
+                evidence.add(metric("COST_PER_POST_ENGAGEMENT",ratio(spend,primary)));
+        }
+        evidence.add(metric("PRIMARY_METRIC_DAYS",primaryDays));
+        var limits=new ArrayList<String>(List.of(
+                "HISTORICAL_COVERAGE_NOT_VERIFIED",
+                "META_ACTION_EVENTS_NOT_STORE_ORDERS",
+                "ACTION_TAXONOMY_CAN_CHANGE",
+                "NO_AUTOMATIC_AD_CHANGES"));
+        if(!quality.analysisEligible()) limits.add("META_COLLECTION_NOT_FINAL");
+        if(primaryDays<rows.size() || (traffic && secondaryDays<rows.size()))
+            limits.add("SOME_DAYS_WITHOUT_ACTION_METRICS");
+        boolean available=primary!=null || traffic && secondary!=null;
+        String title=traffic ? "Acompanhar tráfego para os produtos"
+                : "Acompanhar engajamento dos anúncios";
+        String explanation=traffic ?
+                "Dados de cliques no link e visualizações de destino atribuídos pela Meta. "
+                + "Cliques totais não equivalem a visitas; esses eventos não comprovam "
+                + "compras ou retorno financeiro. " :
+                "Interações de publicações atribuídas pela Meta. "
+                + "Engajamento não equivale a visitas, leads ou vendas. ";
+        explanation+= "A campanha é analisada pelo objetivo declarado na Meta, "
+                + "sem aplicar metas de CPA ou ROAS de produtos. ";
+        if(!available) explanation+=
+                "A Meta não informou ações apropriadas nas linhas observadas. "
+                + "Não interprete ausência da métrica como zero.";
+        if(primaryDays<rows.size()) explanation+=
+                "Há dias com dados de gasto sem o evento principal informado.";
+        return advice(available ?
+                    (traffic?"TRAFFIC_MONITOR":"ENGAGEMENT_MONITOR") :
+                    (traffic?"TRAFFIC_METRICS_UNAVAILABLE":"ENGAGEMENT_METRICS_UNAVAILABLE"),
+                first.accountId(),first.campaignId(),first.campaignName(),first.currency(),
+                "LOW",quality.analysisEligible() && rows.size()>=3 && available
+                        ? "LOW":"INSUFFICIENT",
+                "MONITOR_ONLY",title,explanation,
+                List.copyOf(evidence),List.copyOf(limits));
+    }
+
     private static boolean valid(DailyCampaign row, Request request) {
         return row.day() != null && !row.day().isBefore(request.since()) &&
                 !row.day().isAfter(request.until()) &&
@@ -338,7 +439,15 @@ public class RecommendationRuleEngine {
                 row.spend() != null && row.spend().signum() >= 0 &&
                 row.attributedPurchases() != null && row.attributedPurchases().signum() >= 0 &&
                 row.attributedRevenue() != null && row.attributedRevenue().signum() >= 0 &&
-                row.clicks() >= 0 && row.impressions() >= 0;
+                row.clicks() >= 0 && row.impressions() >= 0
+                && validOptionalCount(row.linkClicks())
+                && validOptionalCount(row.landingPageViews())
+                && validOptionalCount(row.postEngagements())
+                && validOptionalCount(row.addToCarts());
+    }
+
+    private static boolean validOptionalCount(BigDecimal value) {
+        return value==null || value.signum()>=0;
     }
 
     private record Half(long days, long impressions, long clicks, BigDecimal spend) {}
