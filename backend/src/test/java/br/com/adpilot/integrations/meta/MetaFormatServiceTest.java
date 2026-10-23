@@ -11,6 +11,7 @@ class MetaFormatServiceTest {
     private final MetaFormatService service=new MetaFormatService(client);
 
     @Test void classifiesFormatsWithoutLeakingCreativeLinksOrTexts() {
+        when(client.belongsToConfiguredAccount("123")).thenReturn(true);
         when(client.adsets("123",100,null)).thenReturn(new MetaPage(List.of(
                 Map.of("id","1","campaign_id","123","name","Adset teste",
                         "optimization_goal","LANDING_PAGE_VIEWS",
@@ -48,12 +49,14 @@ class MetaFormatServiceTest {
     }
 
     @Test void missingProviderContinuationMarksResultsIncomplete() {
+        when(client.belongsToConfiguredAccount("123")).thenReturn(true);
         when(client.adsets("123",100,null)).thenReturn(new MetaPage(List.of(),"next"));
         assertEquals("META_INVALID_PAGINATION",assertThrows(MetaApiException.class,
                 ()->service.report("123")).errorCode());
     }
 
     @Test void filtersUnexpectedCampaignIdsBeforePublishing() {
+        when(client.belongsToConfiguredAccount("123")).thenReturn(true);
         when(client.adsets("123",100,null)).thenReturn(new MetaPage(List.of(
                 Map.of("id","1","campaign_id","999")),null));
         assertEquals("META_INVALID_CREATIVE_DATA",assertThrows(MetaApiException.class,
@@ -64,5 +67,13 @@ class MetaFormatServiceTest {
         assertEquals("INVALID_CAMPAIGN_ID",assertThrows(MetaApiException.class,
                 ()->service.report("x/ads")).errorCode());
         verifyNoInteractions(client);
+    }
+
+    @Test void rejectsCampaignOwnedByDifferentMetaAccount() {
+        when(client.belongsToConfiguredAccount("123")).thenReturn(false);
+        var err=assertThrows(MetaApiException.class,()->service.report("123"));
+        assertEquals("CAMPAIGN_NOT_IN_ACCOUNT",err.errorCode());
+        verify(client,never()).ads(anyString(),anyInt(),any());
+        verify(client,never()).adsets(anyString(),anyInt(),any());
     }
 }
