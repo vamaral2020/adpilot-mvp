@@ -117,7 +117,17 @@ function RecommendationSpotlight({ preview, period }: {
   const purchases = spotlightMetric(focus,"ATTRIBUTED_PURCHASES");
   const roas = spotlightMetric(focus,"ROAS");
   const cpa = spotlightMetric(focus,"CPA");
-  const metricRows = [
+  const traffic=focus.ruleCode?.startsWith("TRAFFIC_")??false;
+  const engagement=focus.ruleCode?.startsWith("ENGAGEMENT_")??false;
+  const metricRows = traffic ? [
+    {label:"Cliques no link · histórico",value:number(spotlightMetric(focus,"LINK_CLICKS"),2)},
+    {label:"Visitas ao destino · histórico",value:number(spotlightMetric(focus,"LANDING_PAGE_VIEWS"),2)},
+    {label:"Custo por visita · histórico",value:money(spotlightMetric(focus,"COST_PER_LANDING_PAGE_VIEW"),focus.currency??"BRL")},
+  ] : engagement ? [
+    {label:"Interações · histórico",value:number(spotlightMetric(focus,"POST_ENGAGEMENTS"),2)},
+    {label:"Custo por interação · histórico",value:money(spotlightMetric(focus,"COST_PER_POST_ENGAGEMENT"),focus.currency??"BRL")},
+    {label:"Investimento · histórico",value:money(spotlightMetric(focus,"SPEND"),focus.currency??"BRL")},
+  ] : [
     { label:"Compras atribuídas · histórico",value:number(purchases,2) },
     { label:"ROAS atribuído · histórico",value:multiplier(roas) },
     { label:"CPA atribuído · histórico",value:money(cpa,focus.currency ?? "BRL") },
