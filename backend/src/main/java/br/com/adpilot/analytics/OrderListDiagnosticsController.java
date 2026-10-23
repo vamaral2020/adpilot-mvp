@@ -78,4 +78,27 @@ public class OrderListDiagnosticsController {
                 .body(new FollowupReport(cursor!=null,report.nextPageAdvertised(),
                         report.totalExceedsPage(),report.checks()));
     }
+    /**
+     * Isolate timezone representation from a date-value-dependent upstream 404.
+     * No cursor changes and no order data is returned.
+     */
+    @PostMapping("/listing-diagnostics/lower-bound")
+    public ResponseEntity<DiagnosticReport> lowerBound() {
+        if(!enabled)
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Diagnostico temporario desabilitado.");
+        if(!"CONNECTED".equals(shopAuth.status().status()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A loja precisa estar conectada.");
+        Instant upper=Instant.now().minusSeconds(300);
+        Instant cursor=store.cursor("NUVEMSHOP","ORDERS");
+        Instant lower=cursor==null?upper.minusSeconds(30L*86400):cursor.minusSeconds(600);
+        if(!lower.isBefore(upper))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Janela de coleta invalida.");
+        var checks=client.probeOrderLowerBoundFormats(lower,upper);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(new DiagnosticReport(cursor!=null,checks));
+    }
+
 }

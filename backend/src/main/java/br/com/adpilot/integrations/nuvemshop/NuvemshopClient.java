@@ -7,6 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -288,6 +290,54 @@ public class NuvemshopClient {
             checks.add(safeProbeResult("EXACT_PAGE_2",next));
         }
         return new OrderListFollowup(first.hasNext(),first.countOverPage(),List.copyOf(checks));
+    }
+
+
+    /**
+     * Diagnostic only: compare the same lower instant expressed with different
+     * ISO-8601 zone offsets, and older lower instants in the same syntax.
+     * Uses the exact same URI builder, fields, page and headers as production.
+     * Never downloads order bodies, stores data or changes the sync cursor.
+     * Maximum seven HTTP GETs. Abort on rate limiting or transport failures.
+     */
+    public List<OrderListProbe> probeOrderLowerBoundFormats(Instant lower, Instant upper) {
+        if (lower == null || upper == null || !lower.isBefore(upper))
+            throw new NuvemshopException(HttpStatus.BAD_REQUEST,"INVALID_SYNC_WINDOW",
+                    "Janela de diagnostico invalida.");
+
+        var installation = repository.installation().orElseThrow(() ->
+                new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "NUVEMSHOP_NOT_CONNECTED","Conecte a loja antes do diagnostico."));
+        String token = crypto.decrypt(installation.tokenEncrypted());
+        Instant wholeSeconds = lower.truncatedTo(ChronoUnit.SECONDS);
+        var withColon = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx");
+        var compact = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxx");
+        var scenarios = List.of(
+                new ProbeCase("BASELINE_NO_DATE",100,ORDER_SYNC_FIELDS,Map.of()),
+                new ProbeCase("MIN_UTC_Z_SECONDS",100,ORDER_SYNC_FIELDS,
+                        Map.of("updated_at_min",wholeSeconds.toString())),
+                new ProbeCase("MIN_UTC_PLUS00",100,ORDER_SYNC_FIELDS,
+                        Map.of("updated_at_min",withColon.format(
+                                wholeSeconds.atOffset(ZoneOffset.UTC)))),
+                new ProbeCase("MIN_BR_MINUS03",100,ORDER_SYNC_FIELDS,
+                        Map.of("updated_at_min",withColon.format(
+                                wholeSeconds.atOffset(ZoneOffset.ofHours(-3))))),
+                new ProbeCase("MIN_UTC_PLUS0000",100,ORDER_SYNC_FIELDS,
+                        Map.of("updated_at_min",compact.format(
+                                wholeSeconds.atOffset(ZoneOffset.UTC)))),
+                new ProbeCase("MIN_OLDER_24H_Z",100,ORDER_SYNC_FIELDS,
+                        Map.of("updated_at_min",wholeSeconds.minus(1,ChronoUnit.DAYS).toString())),
+                new ProbeCase("MIN_OLDER_7D_Z",100,ORDER_SYNC_FIELDS,
+                        Map.of("updated_at_min",wholeSeconds.minus(7,ChronoUnit.DAYS).toString()))
+        );
+        var results = new ArrayList<OrderListProbe>();
+        for (var check : scenarios) {
+            ProbeStatus status=probeStatusOnly(installation.storeId(),token,1,check.filters());
+            results.add(safeProbeResult(check.scenario(),status));
+            if(status.transportFailure() || Integer.valueOf(429).equals(status.status()))
+                break;
+        }
+        return List.copyOf(results);
     }
 
     private OrderListProbe safeProbeResult(String label, ProbeStatus result) {

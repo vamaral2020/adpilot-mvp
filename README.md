@@ -1340,3 +1340,44 @@ Referências técnicas para os campos inspecionados:
 Após o merge: `git pull --ff-only origin main` e
 `docker compose up -d --build api web`. **Não é preciso executar sync**:
 a inspeção consulta a Meta sob demanda e não altera cursores.
+
+
+## Diagnóstico temporário de 404 em updated_at_min — PR 034
+
+Resultados reais (23/10/2026) isolaram o erro HTTP 404 ao uso de
+`updated_at_min`, enquanto uma listagem sem data e `updated_at_max`
+isoladamente responderam HTTP 200. A documentação oficial da Nuvemshop
+confirma o filtro `updated_at_min` como ISO 8601, mas não explica o 404.
+
+Novo endpoint somente leitura e **desabilitado por padrão**:
+`POST /api/v1/analytics/orders/listing-diagnostics/lower-bound`.
+Habilitar temporariamente `ADPILOT_ORDER_LIST_DIAGNOSTICS_ENABLED=true`
+e recriar somente a API, se necessário. Reutiliza exatamente o mesmo
+`updated_at_min`, `fields`, `page`, `per_page`, versão de API,
+conta, bearer e User-Agent da coleta, mudando apenas a representação
+temporal ou antiguidade do limite inferior. No máximo sete GETs externos.
+
+```bash
+curl -fsS -u admin -X POST \
+  'http://localhost:18080/api/v1/analytics/orders/listing-diagnostics/lower-bound' \
+  | jq '{cursorPresent,checks}'
+```
+
+Cenários: `BASELINE_NO_DATE`, `MIN_UTC_Z_SECONDS`,
+`MIN_UTC_PLUS00` (+00:00), `MIN_BR_MINUS03` (-03:00 para o
+**mesmo instante**), `MIN_UTC_PLUS0000` (+0000),
+`MIN_OLDER_24H_Z` e `MIN_OLDER_7D_Z`. Os últimos dois
+alteram somente a **antiguidade** do limite inferior, preservando o
+formato UTC/Z. Se um limite histórico funcionar e o recente falhar,
+investigar o tratamento de filtros sem registros ou janelas recentes na
+Nuvemshop. Se o mesmo instante funcionar somente com um offset, investigar
+a formatação aceita pelo provedor.
+
+As respostas contêm **apenas** cenário, status HTTP ou falha de
+transporte, e presença do cursor. Nenhuma URL, token, data completa,
+identificador da loja, conteúdo de pedido ou resposta upstream é exibido
+ou armazenado. O probe interrompe em HTTP 429 ou erro de transporte.
+Não faz retry, não avança o cursor e não modifica o algoritmo de
+sincronização. Não presumir que HTTP 404 equivale a ausência de pedidos.
+
+Depois do diagnóstico, desabilitar a flag novamente.

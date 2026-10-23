@@ -71,4 +71,35 @@ class OrderListDiagnosticsControllerTest {
         verify(store,never()).saveOrders(anyLong(),anyList(),any(),any(),anyInt());
     }
 
+
+    @Test void lowerBoundDiagnosticIsDisabledAndDoesNotReadSecretsOrCursor() {
+        var controller=new OrderListDiagnosticsController(store,client,auth,false);
+        var err=assertThrows(ResponseStatusException.class,controller::lowerBound);
+        assertEquals(404,err.getStatusCode().value());
+        verifyNoInteractions(store,client,auth);
+    }
+
+    @Test void lowerBoundDiagnosticIsReadOnlyAndPreservesFailureStatuses() {
+        Instant cursor=Instant.parse("2026-10-23T13:54:01.308487Z");
+        when(auth.status()).thenReturn(new NuvemshopAuthService.Status(
+                "CONNECTED",true,"123","read_orders",cursor));
+        when(store.cursor("NUVEMSHOP","ORDERS")).thenReturn(cursor);
+        var probes=List.of(
+                new NuvemshopClient.OrderListProbe("BASELINE_NO_DATE","HTTP_STATUS",200),
+                new NuvemshopClient.OrderListProbe("MIN_UTC_Z_SECONDS","HTTP_STATUS",404),
+                new NuvemshopClient.OrderListProbe("MIN_UTC_PLUS00","HTTP_STATUS",404));
+        when(client.probeOrderLowerBoundFormats(eq(cursor.minusSeconds(600)),any()))
+                .thenReturn(probes);
+
+        var controller=new OrderListDiagnosticsController(store,client,auth,true);
+        var response=controller.lowerBound();
+
+        assertEquals("no-store",response.getHeaders().getCacheControl());
+        assertTrue(response.getBody().cursorPresent());
+        assertEquals(probes,response.getBody().checks());
+        verify(client).probeOrderLowerBoundFormats(eq(cursor.minusSeconds(600)),
+                argThat(upper->upper.isAfter(cursor)));
+        verify(store,never()).saveOrders(anyLong(),anyList(),any(),any(),anyInt());
+        verify(store,never()).begin(anyString(),anyString());
+    }
 }
