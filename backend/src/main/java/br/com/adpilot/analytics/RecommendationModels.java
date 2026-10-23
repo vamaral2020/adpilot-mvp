@@ -37,10 +37,16 @@ public final class RecommendationModels {
             List<LocalDate> collectedWithoutRows, Instant lastWindowSuccess,
             boolean syncFresh, boolean analysisEligible) {}
 
+    /** A manually associated immutable product goal; never inferred by Meta attribution. */
+    public record LinkedGoal(UUID goalId, String accountId, String campaignId,
+            String productLabel, long priceCents, BigDecimal targetCpa,
+            BigDecimal targetRoas, Instant linkedAt) {}
+
     public record Report(LocalDate since, LocalDate until, BigDecimal targetRoas,
             BigDecimal targetCpa, boolean coverageVerified, Instant generatedAt,
             String metaSyncStatus, Instant lastMetaSyncSuccess,
-            List<String> warnings, List<Advice> recommendations, DataQuality quality) {}
+            List<String> warnings, List<Advice> recommendations, DataQuality quality,
+            List<LinkedGoal> linkedGoals) {}
 
     public record Stored(UUID evaluationId, Report report) {}
 }

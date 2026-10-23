@@ -27,22 +27,26 @@ public class RecommendationService {
     private final RecommendationRuleEngine engine;
     private final AnalyticsHistoryRepository historyRepository;
     private final RecommendationDataQualityAssessment qualityAssessment;
+    private final EconomicGoalRepository economicGoals;
     private final Clock clock;
 
     @Autowired
     public RecommendationService(RecommendationRepository repository,
             RecommendationRuleEngine engine, AnalyticsHistoryRepository historyRepository,
-            RecommendationDataQualityAssessment qualityAssessment) {
-        this(repository,engine,historyRepository,qualityAssessment,Clock.systemUTC());
+            RecommendationDataQualityAssessment qualityAssessment,
+            EconomicGoalRepository economicGoals) {
+        this(repository,engine,historyRepository,qualityAssessment,economicGoals,Clock.systemUTC());
     }
 
     RecommendationService(RecommendationRepository repository,
             RecommendationRuleEngine engine, AnalyticsHistoryRepository historyRepository,
-            RecommendationDataQualityAssessment qualityAssessment,Clock clock) {
+            RecommendationDataQualityAssessment qualityAssessment,
+            EconomicGoalRepository economicGoals,Clock clock) {
         this.repository=repository;
         this.engine=engine;
         this.historyRepository=historyRepository;
         this.qualityAssessment=qualityAssessment;
+        this.economicGoals=economicGoals;
         this.clock=clock;
     }
 
@@ -55,7 +59,7 @@ public class RecommendationService {
         var receipts=historyRepository.metaWindows(request.since(),request.until());
         var quality=qualityAssessment.assess(request,rows,receipts,sync,now);
         // Reuse PR 020's successful window receipts; never trigger provider requests.
-        return engine.evaluate(request,rows,sync,now,quality);
+        return engine.evaluate(request,rows,sync,now,quality,economicGoals.linkedGoals());
     }
 
     /** Explicit local write only, never a Meta Ads action. */

@@ -992,3 +992,104 @@ permanece preliminar; o recibo não é prova de venda paga.
 sem novas dependências. Avaliações armazenadas via POST permanecem
 apenas registros `DRAFT` locais e as recomendações guardam métricas
 da qualidade da coleta como evidência.
+
+
+## PR 022 — Metas econômicas imutáveis por produto e associação manual à Meta
+
+O planejamento deixa de exigir que CPA e ROAS sejam redigitados em cada
+análise: agora é possível salvar um plano de um produto e associá-lo
+**explicitamente** a campanhas específicas. Não existe associação automática
+entre produtos, campanhas, IDs de pedidos ou atribuições de anúncios.
+
+### Arquitetura e segurança
+
+- Migration **V6**: `analytics_product_goal` armazena uma versão **imutável**
+  dos custos, percentuais e metas de um produto manualmente nomeado, em BRL;
+  `analytics_campaign_goal` relaciona **uma** meta por
+  `(workspace_id,account_id,campaign_id)`, com confirmação explícita de
+  que a campanha representa uma unidade de um único produto. O mesmo plano
+  pode ser associado a campanhas diferentes.
+- As operações de planejamento usam o workspace local, autenticação Basic
+  existente e SQL parametrizado. Somente campanhas conhecidas dos snapshots
+  Meta, com conta e moeda BRL comprovadas nos Insights locais, podem ser
+  associadas. Campanhas de moedas desconhecidas/outras moedas são recusadas.
+- O backend recalcula todas as metas em centavos e basis points e não aceita
+  CPA/ROAS vindos do navegador. Todos os custos são obrigatórios, incluindo
+  zeros explícitos; preço e lucro são validados; um CPA não positivo é
+  rejeitado. O ROAS-alvo é arredondado **para cima** até 0,01x.
+- Atualizar os custos não modifica uma meta já armazenada: salve uma
+  **nova versão** e associe-a novamente. O vínculo é reversível;
+  a meta salva e avaliações anteriores continuam preservadas.
+- `analytics_recommendation.product_goal_id` aponta para o plano imutável
+  usado na avaliação, quando ao menos um dos limiares veio do plano. A
+  avaliação com ambos limiares digitados manualmente não é rotulada como
+  derivada do plano. O histórico de avaliações permanece `DRAFT` e local.
+- Nenhuma rota do PR chama os endpoints de escrita da Meta ou da Nuvemshop.
+  O frontend usa proxy Next.js de rotas permitidas, com credenciais somente
+  no servidor, verificação da origem nas operações de escrita e `no-store`.
+
+### Uso da interface
+
+1. Acesse `/calculadora`, ajuste preço, custos e lucro desejado.
+2. Informe o **nome manual** do produto e clique em **Salvar meta do produto**.
+   É criado um snapshot imutável no PostgreSQL, identificado por UUID.
+3. Acesse `/planejamento`; o catálogo de campanhas vem dos snapshots
+   locais da Meta. Escolha uma meta e confirme que a campanha corresponde
+   àquele produto e a uma unidade por pedido.
+4. Em `/recomendacoes`, deixe os campos ROAS e CPA vazios para aplicar
+   **as metas salvas da respectiva campanha**. Metas informadas manualmente
+   substituem os **respectivos** campos, sem alterar os planos armazenados.
+5. Para uma campanha não associada, o motor continua pedindo metas
+   comerciais, em vez de copiar a meta de outra campanha.
+
+A análise ainda é **consultiva**. A proteção do PR 021 continua ativa:
+histórico desatualizado ou período parcialmente coletado bloqueia
+investigações financeiras; amostras pequenas continuam recebendo
+`LOW_SAMPLE`. Metas de produto não autorizam orçamento ou pausa automáticos.
+
+**Limite deliberado:** a aplicação não identifica automaticamente o produto
+vendido em uma compra atribuída pela Meta. Não vincule uma meta a campanhas
+de catálogo, múltiplos produtos ou pedidos com cestas diferentes, a menos
+que a hipótese de uma unidade de um produto seja de fato representativa.
+
+### Contratos autenticados
+
+```
+GET    /api/v1/planning/catalog
+POST   /api/v1/planning/goals
+PUT    /api/v1/planning/campaigns/{accountId}/{campaignId}/goal
+DELETE /api/v1/planning/campaigns/{accountId}/{campaignId}/goal
+GET    /api/v1/analytics/recommendations?since=YYYY-MM-DD&until=YYYY-MM-DD
+```
+
+JSON para criar uma meta (o backend calcula CPA e ROAS):
+
+```json
+{
+  "productLabel": "Vestido midi azul",
+  "priceCents": 19900,
+  "productCostCents": 7800,
+  "taxBasisPoints": 400,
+  "paymentBasisPoints": 500,
+  "paymentFixedCents": 200,
+  "shippingSubsidyCents": 300,
+  "packagingCents": 200,
+  "otherCostsCents": 1000,
+  "desiredProfitBasisPoints": 1700
+}
+```
+
+Resultado esperado no exemplo: `targetCpaCents=5226` (R$ 52,26),
+`targetRoasHundredths=381` (3,81x). No vínculo PUT, envie o UUID
+`goalId` e `singleProductConfirmed=true`. Sem esse consentimento, a
+alteração local é recusada. O relatório de recomendações inclui
+`linkedGoals` com identificadores, produto, CPA e ROAS salvos.
+
+### Verificações
+
+O CI valida a migration V6, criação e leitura de meta, contas
+desconhecidas/moeda não comprovada, confirmação obrigatória, vínculo e
+remoção, proveniência das avaliações em PostgreSQL, ausência de mutação
+em provedores, proteção da rota Next contra POST cross-origin e interface
+com o produto vinculado. Nenhuma sincronização externa é iniciada pelo
+fluxo de planejamento.
