@@ -99,6 +99,41 @@ class AnalyticsSyncServiceTest {
         assertFalse(report.toString().contains("potentially-sensitive-upstream-message"));
     }
 
+
+    @Test void orderDetail404DoesNotAdvanceCheckpointAndMetaStillSucceeds() {
+        var store=mock(AnalyticsSyncStore.class);
+        var collector=mock(AnalyticsCollector.class);
+        var auth=mock(NuvemshopAuthService.class);
+        when(auth.status()).thenReturn(new NuvemshopAuthService.Status(
+                "CONNECTED",true,"1","read_orders",Instant.now()));
+        when(store.begin("NUVEMSHOP","ORDERS")).thenReturn(10L);
+        when(store.begin("META_ADS","CAMPAIGNS")).thenReturn(11L);
+        when(store.begin("META_ADS","INSIGHTS_DAILY")).thenReturn(12L);
+        Instant previousCursor=Instant.parse("2026-10-22T21:10:16Z");
+        when(store.cursor("NUVEMSHOP","ORDERS")).thenReturn(previousCursor);
+        when(collector.orders(eq(previousCursor),any())).thenThrow(
+                new br.com.adpilot.integrations.nuvemshop.NuvemshopException(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY,
+                        "NUVEMSHOP_ORDER_DETAIL_ERROR","Sensitive upstream body",404));
+        when(collector.campaigns(any())).thenReturn(
+                new AnalyticsCollector.CampaignWindow(List.of(),0,"123456",Instant.now()));
+        when(collector.insights(any())).thenReturn(
+                new AnalyticsCollector.MetaWindow(List.of(),0,"123456",
+                        LocalDate.of(2026,10,1),LocalDate.of(2026,10,21)));
+
+        var report=new AnalyticsSyncService(store,collector,meta,auth,true).run();
+
+        assertEquals("FAILED",report.results().getFirst().status());
+        assertEquals("ORDER_DETAIL_HTTP_404",report.results().getFirst().code());
+        assertFalse(report.toString().contains("Sensitive"));
+        verify(store).failed(10L,"ORDER_DETAIL_HTTP_404");
+        verify(store,never()).saveOrders(anyLong(),anyList(),any(),any(),anyInt());
+        assertEquals("SUCCEEDED",report.results().get(1).status());
+        assertEquals("SUCCEEDED",report.results().get(2).status());
+        verify(store).saveCampaigns(eq(11L),anyList(),any(),eq(0));
+        verify(store).saveMeta(eq(12L),anyList(),any(),any(),any(),any(),eq(0));
+    }
+
     @Test void databaseFailureIsSeparatedFromCollectionAndCannotReportSuccess() {
         var store=mock(AnalyticsSyncStore.class);
         var collector=mock(AnalyticsCollector.class);
