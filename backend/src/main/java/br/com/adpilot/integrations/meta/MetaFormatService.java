@@ -24,7 +24,7 @@ public class MetaFormatService {
     public record AdSetInfo(String id,String name,String optimizationGoal,
             String destinationType,String effectiveStatus) {}
     public record AdInfo(String id,String name,String adsetId,String effectiveStatus,
-            String format,String formatEvidence) {}
+            String format,String formatEvidence,MetaCreativeComposition assetComposition) {}
     public record FormatReport(String campaignId,List<AdSetInfo> adsets,
             List<AdInfo> ads,boolean complete,boolean formatsFullyIdentified,
             int adsetPages,int adPages) {}
@@ -48,11 +48,13 @@ public class MetaFormatService {
                     label(row.get("effective_status"),40)));
         }
         for(var row:ads.data()) {
-            var format=classify(row.get("creative"));
+            var creative=row.get("creative");
+            var format=classify(creative);
+            var composition=MetaCreativeComposition.inspect(creative);
             adData.add(new AdInfo(identifier(row.get("id")),
                     label(row.get("name"),160),identifier(row.get("adset_id")),
                     label(row.get("effective_status"),40),format,
-                    "META_CREATIVE_METADATA"));
+                    "META_CREATIVE_METADATA",composition));
         }
         boolean complete=sets.complete() && ads.complete();
         boolean classified=complete && adData.stream()

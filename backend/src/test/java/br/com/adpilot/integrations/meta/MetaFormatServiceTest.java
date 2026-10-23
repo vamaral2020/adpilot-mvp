@@ -63,6 +63,35 @@ class MetaFormatServiceTest {
                 ()->service.report("123")).errorCode());
     }
 
+    @Test void endpointReportExposesOnlySafeAssetBreakdownForDynamicCreative() {
+        when(client.belongsToConfiguredAccount("123")).thenReturn(true);
+        when(client.adsets("123",100,null)).thenReturn(new MetaPage(List.of(
+                Map.of("id","3","campaign_id","123","name","Conjunto","effective_status","ACTIVE")),null));
+        when(client.ads("123",100,null)).thenReturn(new MetaPage(List.of(
+                Map.of("id","45","campaign_id","123","adset_id","3","name","Anuncio",
+                        "effective_status","ACTIVE",
+                        "creative",Map.of("object_type","LINK",
+                                "asset_feed_spec",Map.of(
+                                        "images",List.of(Map.of("hash","VERY-SECRET")),
+                                        "videos",List.of(Map.of("video_id","PRIVATE-999")),
+                                        "carousels",List.of(),
+                                        "ad_formats",List.of("SINGLE_IMAGE","SINGLE_VIDEO"))))),null));
+
+        var report=service.report("123");
+        assertTrue(report.complete());
+        assertFalse(report.formatsFullyIdentified());
+        assertEquals("DYNAMIC_ASSETS",report.ads().getFirst().format());
+        var assets=report.ads().getFirst().assetComposition();
+        assertEquals(1,assets.imageAssetCount());
+        assertEquals(1,assets.videoAssetCount());
+        assertEquals(0,assets.carouselVariantCount());
+        assertEquals(0,assets.carouselCardCount());
+        assertEquals(List.of("SINGLE_IMAGE","SINGLE_VIDEO"),assets.declaredFormats());
+        assertTrue(assets.mixedImageVideoAssets());
+        assertFalse(report.toString().contains("VERY-SECRET"));
+        assertFalse(report.toString().contains("PRIVATE-999"));
+    }
+
     @Test void rejectsNonNumericCampaignWithoutProviderCalls() {
         assertEquals("INVALID_CAMPAIGN_ID",assertThrows(MetaApiException.class,
                 ()->service.report("x/ads")).errorCode());

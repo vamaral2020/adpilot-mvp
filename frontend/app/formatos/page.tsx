@@ -11,9 +11,22 @@ type Adset={
   id:string; name:string|null; optimizationGoal:string|null;
   destinationType:string|null; effectiveStatus:string|null;
 };
+type AssetComposition={
+  dynamicAssetFeed:boolean;
+  imageAssetCount:number|null;
+  videoAssetCount:number|null;
+  carouselVariantCount:number|null;
+  carouselCardCount:number|null;
+  declaredFormats:string[];
+  carouselStructureDetected:boolean;
+  catalogReferenceDetected:boolean;
+  mixedImageVideoAssets:boolean;
+  notes:string[];
+};
 type Ad={
   id:string;name:string|null;adsetId:string;
   effectiveStatus:string|null;format:string;formatEvidence:string;
+  assetComposition?:AssetComposition|null;
 };
 type FormatReport={
   campaignId:string;adsets:Adset[];ads:Ad[];
@@ -47,6 +60,14 @@ const objectiveLabels:Record<string,string>={
   OUTCOME_LEADS:"Cadastros",
   OUTCOME_APP_PROMOTION:"Aplicativo",
 };
+const assetFormatLabels:Record<string,string>={
+  SINGLE_IMAGE:"Imagem única",SINGLE_VIDEO:"Vídeo único",
+  CAROUSEL:"Carrossel",COLLECTION:"Coleção",
+};
+function counted(value:number|null|undefined):string {
+  return typeof value==="number"&&Number.isInteger(value)&&value>=0
+    ?String(value):"Não informado";
+}
 const formatLabels:Record<string,string>={
   IMAGE:"Imagem",VIDEO:"Vídeo",CAROUSEL:"Carrossel",
   CATALOG:"Catálogo",DYNAMIC_ASSETS:"Recursos dinâmicos / mistos",
@@ -64,6 +85,9 @@ export default async function FormatsPage({searchParams}:{searchParams:Promise<P
     :null;
   const detail=report?.data;
   const adsets=new Map(detail?.adsets.map(x=>[x.id,x])??[]);
+  const dynamicCount=detail?.ads.filter(x=>x.assetComposition?.dynamicAssetFeed).length??0;
+  const catalogCount=detail?.ads.filter(x=>x.assetComposition?.catalogReferenceDetected).length??0;
+  const carouselCount=detail?.ads.filter(x=>x.assetComposition?.carouselStructureDetected).length??0;
   return <main className="historyShell">
     <nav className="historyNav">
       <Link href="/">← Visão geral</Link>
@@ -109,6 +133,9 @@ export default async function FormatsPage({searchParams}:{searchParams:Promise<P
         <div><small>Conjuntos identificados</small><strong>{detail.adsets.length}</strong></div>
         <div><small>Anúncios identificados</small><strong>{detail.ads.length}</strong></div>
         <div><small>Inventário</small><strong>{detail.complete?"Completo":"Parcial"}</strong></div>
+        <div><small>Recursos dinâmicos</small><strong>{dynamicCount}</strong></div>
+        <div><small>Sinal de catálogo</small><strong>{catalogCount}</strong></div>
+        <div><small>Estrutura de carrossel</small><strong>{carouselCount}</strong></div>
       </section>
       <section className="recommendationsList">
         <article className="recommendationCard">
@@ -129,12 +156,53 @@ export default async function FormatsPage({searchParams}:{searchParams:Promise<P
               <p>Formato: <strong>{formatLabels[ad.format]??"Não identificado"}</strong>
                 {" · "}Conjunto: {adsets.get(ad.adsetId)?.name??ad.adsetId}
                 {" · "}Situação: {ad.effectiveStatus??"Não informada"}</p>
+              {ad.assetComposition && (ad.assetComposition.dynamicAssetFeed
+                || ad.assetComposition.carouselStructureDetected
+                || ad.assetComposition.catalogReferenceDetected) && <div className="formatComposition">
+                <p className="formatCompositionTitle">Composição cadastrada na Meta</p>
+                {ad.assetComposition.dynamicAssetFeed && <div className="formatCompositionGrid">
+                  <div><small>Recursos de imagem</small>
+                    <strong>{counted(ad.assetComposition.imageAssetCount)}</strong></div>
+                  <div><small>Recursos de vídeo</small>
+                    <strong>{counted(ad.assetComposition.videoAssetCount)}</strong></div>
+                  <div><small>Variantes de carrossel</small>
+                    <strong>{counted(ad.assetComposition.carouselVariantCount)}</strong></div>
+                  <div><small>Cartões de carrossel</small>
+                    <strong>{counted(ad.assetComposition.carouselCardCount)}</strong></div>
+                </div>}
+                {!ad.assetComposition.dynamicAssetFeed &&
+                  ad.assetComposition.carouselCardCount!==null && <p>
+                    Cartões identificados na estrutura: {ad.assetComposition.carouselCardCount}</p>}
+                <div className="formatSignals">
+                  {ad.assetComposition.mixedImageVideoAssets &&
+                    <span>Imagens e vídeos configurados no mesmo criativo</span>}
+                  {ad.assetComposition.carouselStructureDetected &&
+                    <span>Estrutura compatível com carrossel</span>}
+                  {ad.assetComposition.catalogReferenceDetected &&
+                    <span>Referência de catálogo identificada</span>}
+                </div>
+                {ad.assetComposition.declaredFormats.length>0 && <p>
+                  <strong>Formatos declarados no cadastro:</strong>{" "}
+                  {ad.assetComposition.declaredFormats.map(code=>assetFormatLabels[code]??"Outro")
+                    .join(", ")}
+                </p>}
+                {ad.assetComposition.notes.includes("SOME_ASSET_COUNTS_NOT_REPORTED") &&
+                  <p className="formatCompositionNotice">A Meta não informou todas as listas de
+                    recursos. “Não informado” não significa zero.</p>}
+                {ad.assetComposition.notes.includes("AD_FORMATS_UNRECOGNIZED") &&
+                  <p className="formatCompositionNotice">A Meta retornou outros formatos não
+                    reconhecidos; eles foram omitidos por segurança.</p>}
+                <p className="formatCompositionNotice">Contagens representam entradas de
+                  configuração, não arquivos únicos nem peças comprovadamente veiculadas.
+                  O formato final pode variar por posicionamento.</p>
+              </div>}
             </div>)}
         </article>
       </section>
-      <p className="historySmall">Formato estimado a partir do cadastro do criativo na Meta,
-        não da renderização final em cada posicionamento. Nenhuma URL de destino,
-        texto do anúncio, mídia ou dado pessoal é retornado nesta página.</p>
+      <p className="historySmall">Formato e composição derivados exclusivamente dos
+        metadados de cadastro da Meta. Sinais de carrossel e catálogo não comprovam
+        qual combinação foi entregue ao público. Listas ausentes não são tratadas
+        como zero. URLs, texto, hashes e IDs de mídia não são retornados.</p>
     </>}
   </main>;
 }
