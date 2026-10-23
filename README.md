@@ -1093,3 +1093,34 @@ remoção, proveniência das avaliações em PostgreSQL, ausência de mutação
 em provedores, proteção da rota Next contra POST cross-origin e interface
 com o produto vinculado. Nenhuma sincronização externa é iniciada pelo
 fluxo de planejamento.
+
+
+### Diagnóstico seguro de 404 na sincronização Nuvemshop
+
+O sincronizador consulta `GET /orders` com janela por `updated_at`.
+Se a listagem trouxer um pedido pago sem `paid_at`, ele faz uma segunda
+leitura individual `GET /orders/{id}`. Essas leituras podem falhar com
+HTTP 404 por motivos diferentes.
+
+Os códigos de falha na resposta de `POST /api/v1/analytics/sync`
+e em `GET /api/v1/analytics/runs` distinguem esses casos:
+
+- `ORDER_LIST_HTTP_404`: o endpoint de listagem incremental retornou 404
+  (investigar versão/base da API, rota e parâmetros do intervalo).
+- `ORDER_DETAIL_HTTP_404`: a listagem ocorreu, mas a consulta individual
+  de um pedido pago sem `paid_at` retornou 404 (investigar disponibilidade
+  do pedido e comportamento da API de detalhes).
+- `ORDER_API_HTTP_404`: 404 de origem não identificada pela allowlist;
+  código conservador para falhas desconhecidas.
+
+A classificação é **somente diagnóstica** e não ignora registros,
+não altera o cursor e não avança janelas incompletas. Os logs persistidos
+contêm apenas códigos fixos de erro, sem URLs, identificadores de pedidos,
+conteúdo do provedor ou dados de clientes. Não reinicie o cursor para
+contornar um 404; investigue a etapa indicada pelo novo código.
+
+Para verificar sem exibir pedidos:
+```bash
+curl -fsS -u admin -X POST http://localhost:18080/api/v1/analytics/sync \
+  | jq '.results[] | {provider,resource,status,code,fetched,stored}'
+```

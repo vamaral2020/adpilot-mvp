@@ -20,10 +20,19 @@ final class OrderSyncFailureCodes {
 
         if (failure instanceof NuvemshopException upstream) {
             Integer status = upstream.upstreamStatus();
+            String code = upstream.code();
+            // Existing NuvemshopClient codes identify which read failed.
+            // Distinguish recurring 404s without persisting URLs, order IDs,
+            // response bodies, access tokens or customer identifiers.
+            if (status != null && status == 404) {
+                if ("NUVEMSHOP_ORDER_DETAIL_ERROR".equals(code))
+                    return "ORDER_DETAIL_HTTP_404";
+                if ("NUVEMSHOP_UPSTREAM_ERROR".equals(code))
+                    return "ORDER_LIST_HTTP_404";
+            }
             if (status != null && status >= 400 && status <= 599) {
                 return "ORDER_API_HTTP_" + status;
             }
-            String code = upstream.code();
             if (code == null) return "ORDER_API_FAILURE";
             return switch (code) {
                 case "NUVEMSHOP_NOT_CONNECTED" -> "ORDER_API_NOT_CONNECTED";
