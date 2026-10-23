@@ -34,6 +34,9 @@ public class MetaFormatService {
         if (campaignId==null || !campaignId.matches("[0-9]{1,40}"))
             throw new MetaApiException(HttpStatus.BAD_REQUEST,"INVALID_CAMPAIGN_ID",
                     "Informe o ID numerico de uma campanha.");
+        if(!client.belongsToConfiguredAccount(campaignId))
+            throw new MetaApiException(HttpStatus.NOT_FOUND,"CAMPAIGN_NOT_IN_ACCOUNT",
+                    "Campanha não identificada na conta Meta configurada.");
         Collected sets=collect(campaignId,true);
         Collected ads=collect(campaignId,false);
         var setData=new ArrayList<AdSetInfo>();
