@@ -1487,3 +1487,34 @@ do navegador se desejar o documento sem data/URL nas margens. Verifique
 a legibilidade do título "Comparação indicativa disponível", o índice,
 todas as cinco colunas da tabela diária e todas as colunas da tabela
 de campanhas. A impressão não altera pedidos, tokens ou campanhas.
+
+
+## PR 037 — Corrigir cartões na tela e a proeminência de razão não atribuída
+
+Uma captura real do navegador após PR 036 demonstrou que a impressão
+A4 havia melhorado, mas a interface normal ainda utilizava três
+cartões forçados em largura fixa e exibia `92,56x` como se fosse
+um KPI financeiro acionável.
+
+**Mudança específica do frontend:**
+- O bloco de indicadores usa grade CSS `auto-fit` responsiva ao
+  espaço disponível e zoom, com `min-width:0`, quebra de títulos,
+  badge flexível e disposição em uma coluna em telas estreitas.
+- O retorno atribuído pela Meta permanece um indicador de
+  **atribuição da plataforma**, com nota específica explicando que
+  `0x` não comprova zero vendas causadas pelos anúncios.
+- O quociente `receita paga identificada da loja / gasto Meta`
+  permanece **disponível somente sob uma seção de detalhes explicativa**
+  (quando sua cobertura mínima é satisfeita). Ele deixa de ocupar
+  um grande KPI, pois não relaciona pedidos individuais a anúncios.
+- A posição principal passa a exibir **"Pedidos da loja vinculados à
+  publicidade: Não identificados"**, em vez de uma razão inflada.
+- A impressão do PR 036 continua independente; o CSS adicional se
+  aplica somente em `@media screen`.
+- Nenhuma mudança em backend, banco, fórmula, cursores, OAuth ou Meta Ads.
+
+**Validação:** após merge manual, `docker compose up -d --build web`;
+abra `/conciliacao?since=2026-10-20&until=2026-10-22` na largura
+normal e com zoom de 125%/150%, confirme que nenhum cartão fica
+cortado e que a razão `92,56x` não é exibida como um KPI principal.
+Abra a seção de detalhes para consultar a conta aritmética contextualizada.
