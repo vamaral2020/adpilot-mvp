@@ -956,3 +956,99 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
     font-size:18px!important;
   }
 }
+
+
+/* PR037: browser layout, not print. Cards must adapt to the actual
+   available width instead of keeping three forced columns. */
+@media screen {
+  .reconciliationPage,
+  .reconciliationPage .historyCard,
+  .reconciliationPage .historySectionHead,
+  .reconciliationPage .reconciliationRatios {
+    min-width:0;
+    max-width:100%;
+  }
+  .reconciliationPage .historySectionHead > div {
+    min-width:0;
+    flex:1 1 260px;
+  }
+  .reconciliationPage .historySectionHead .historySourceTag {
+    flex:0 1 auto;
+    max-width:100%;
+    white-space:normal;
+    text-align:center;
+  }
+  .reconciliationPage .reconciliationRatios {
+    display:grid;
+    width:100%;
+    grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));
+    gap:13px;
+    align-items:stretch;
+    margin-top:18px;
+  }
+  .reconciliationPage .reconciliationRatios > div {
+    min-width:0;
+    max-width:100%;
+    overflow-wrap:anywhere;
+    padding:18px;
+  }
+  .reconciliationPage .reconciliationRatios strong {
+    display:block;
+    color:#eaf2ff;
+    font-size:clamp(19px,2vw,26px);
+    line-height:1.22;
+    overflow-wrap:anywhere;
+    white-space:normal;
+  }
+  .reconciliationPage .reconciliationRatios p {
+    overflow-wrap:anywhere;
+    line-height:1.65;
+  }
+  .reconciliationPage .reconciliationMathDetails {
+    margin-top:16px;
+    padding:15px 17px;
+    border:1px solid #3b506b;
+    border-radius:11px;
+    color:#c6d6e9;
+    background:#142238;
+  }
+  .reconciliationPage .reconciliationMathDetails > summary {
+    font-size:12px;
+    font-weight:680;
+    color:#b9d7ff;
+    line-height:1.5;
+    cursor:pointer;
+  }
+  .reconciliationPage .reconciliationMathDetails > summary:focus-visible {
+    outline:2px solid #86b9ff;
+    outline-offset:4px;
+  }
+  .reconciliationPage .reconciliationMathContent {
+    padding-top:12px;
+  }
+  .reconciliationPage .reconciliationMathContent p {
+    color:#b4c7dc;
+    font-size:12px;
+    line-height:1.75;
+    margin:0 0 10px;
+  }
+  .reconciliationPage .reconciliationMathContent strong {
+    color:#e0eeff;
+  }
+  .reconciliationPage .reconciliationMathContent .reconciliationMathValue {
+    color:#eaf2ff;
+    font-weight:740;
+    font-variant-numeric:tabular-nums;
+  }
+  .reconciliationPage .reconciliationMathUnavailable {
+    margin-top:15px;
+  }
+}
+@media screen and (max-width:700px) {
+  .reconciliationPage .reconciliationRatios {
+    grid-template-columns:minmax(0,1fr);
+  }
+  .reconciliationPage .reconciliationRatios > div {
+    padding:15px;
+  }
+}
