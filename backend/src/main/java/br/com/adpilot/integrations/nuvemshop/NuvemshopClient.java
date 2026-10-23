@@ -5,6 +5,8 @@ import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -175,6 +177,78 @@ public class NuvemshopClient {
         }
     }
 
+    /**
+     * Operator-only, opt-in, read-only diagnostic of order-list URL parameters.
+     * Intentionally discards every response body and never returns paths, dates,
+     * order IDs, store IDs or tokens. It does not persist snapshots or cursors.
+     */
+    public record OrderListProbe(String scenario, String outcome, Integer httpStatus) {}
+
+    private record ProbeCase(String scenario, int perPage, String fields,
+                             Map<String,String> filters) {}
+
+    public List<OrderListProbe> probeOrderList(Instant since, Instant until) {
+        if (since == null || until == null || !since.isBefore(until))
+            throw new NuvemshopException(HttpStatus.BAD_REQUEST,"INVALID_SYNC_WINDOW",
+                    "Janela de diagnostico invalida.");
+        var installation = repository.installation().orElseThrow(() ->
+                new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "NUVEMSHOP_NOT_CONNECTED","Conecte a loja antes do diagnostico."));
+        String token = crypto.decrypt(installation.tokenEncrypted());
+        var exact = Map.of("updated_at_min",since.toString(),
+                "updated_at_max",until.toString());
+        var seconds = Map.of(
+                "updated_at_min",since.truncatedTo(ChronoUnit.SECONDS).toString(),
+                "updated_at_max",until.truncatedTo(ChronoUnit.SECONDS).toString());
+        var cases = List.of(
+                new ProbeCase("BASELINE_SAME_FIELDS",100,ORDER_SYNC_FIELDS,Map.of()),
+                new ProbeCase("RANGE_EXACT",100,ORDER_SYNC_FIELDS,exact),
+                new ProbeCase("LOWER_ONLY",100,ORDER_SYNC_FIELDS,
+                        Map.of("updated_at_min",since.toString())),
+                new ProbeCase("UPPER_ONLY",100,ORDER_SYNC_FIELDS,
+                        Map.of("updated_at_max",until.toString())),
+                new ProbeCase("RANGE_SECONDS",100,ORDER_SYNC_FIELDS,seconds),
+                new ProbeCase("RANGE_MINIMAL_FIELDS",100,"id,updated_at",exact),
+                new ProbeCase("RANGE_PER_PAGE_ONE",1,ORDER_SYNC_FIELDS,exact));
+        var results = new ArrayList<OrderListProbe>();
+        for (ProbeCase check : cases) {
+            URI uri = readUri("orders",check.fields(),1,check.perPage(),
+                    installation.storeId(),check.filters());
+            try {
+                int status=client.get().uri(uri)
+                        .header(HttpHeaders.AUTHORIZATION,"Bearer "+token)
+                        .header(HttpHeaders.USER_AGENT,settings.userAgent())
+                        .retrieve().toBodilessEntity().getStatusCode().value();
+                results.add(new OrderListProbe(check.scenario(),"HTTP_STATUS",status));
+                if (status==429) break;
+            } catch (RestClientResponseException e) {
+                int status=e.getStatusCode().value();
+                results.add(new OrderListProbe(check.scenario(),"HTTP_STATUS",status));
+                if (status==429) break; // Honor provider rate limits.
+            } catch (RestClientException e) {
+                results.add(new OrderListProbe(check.scenario(),"TRANSPORT_FAILURE",null));
+                break; // No exception message, URL or response body is exposed.
+            }
+        }
+        return List.copyOf(results);
+    }
+
+    /** URI builder shared with production order-list reads for exact comparisons. */
+    private URI readUri(String resource,String fields,int page,int perPage,
+                        String storeId,Map<String,String> filters) {
+        String path = "/" + settings.apiVersion() + "/" + storeId + "/" + resource;
+        StringBuilder query = new StringBuilder(settings.apiBase()).append(path)
+                .append("?page=").append(page).append("&per_page=").append(perPage)
+                .append("&fields=").append(URLEncoder.encode(fields,StandardCharsets.UTF_8));
+        filters.forEach((key,value)-> {
+            if (!key.equals("updated_at_min") && !key.equals("updated_at_max"))
+                throw new IllegalArgumentException("Filtro nao permitido");
+            query.append('&').append(key).append('=')
+                    .append(URLEncoder.encode(value,StandardCharsets.UTF_8));
+        });
+        return URI.create(query.toString());
+    }
+
     private NuvemshopPage read(String resource, String fields, int page, int perPage,
                                List<String> allowed, String nested, List<String> allowedNested) {
         return read(resource, fields, page, perPage, allowed, nested, allowedNested, Map.of());
@@ -192,18 +266,7 @@ public class NuvemshopClient {
                 new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE, "NUVEMSHOP_NOT_CONNECTED",
                         "Conecte a loja Nuvemshop antes de consultar produtos e pedidos."));
         String token = crypto.decrypt(installation.tokenEncrypted());
-        String path = "/" + settings.apiVersion() + "/" + installation.storeId() + "/" + resource;
-        StringBuilder query = new StringBuilder(settings.apiBase()).append(path)
-                .append("?page=").append(page).append("&per_page=").append(perPage)
-                .append("&fields=").append(URLEncoder.encode(fields, StandardCharsets.UTF_8));
-        filters.forEach((key, value) -> {
-            if (!key.equals("updated_at_min") && !key.equals("updated_at_max")) {
-                throw new IllegalArgumentException("Filtro nao permitido");
-            }
-            query.append('&').append(key).append('=')
-                    .append(URLEncoder.encode(value, StandardCharsets.UTF_8));
-        });
-        URI uri = URI.create(query.toString());
+        URI uri = readUri(resource,fields,page,perPage,installation.storeId(),filters);
         try {
             var result = client.get().uri(uri)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
