@@ -76,6 +76,7 @@ function Sidebar({ period }: { period: Period }) {
       <Link href="/" className="nav active"><Icon name="grid"/> Visão geral</Link>
       <Link href="#campanhas" className="nav"><Icon name="activity"/> Campanhas</Link>
       <Link href="/calculadora" className="nav"><Icon name="calculator"/> Planejar campanha</Link>
+      <Link href="/formatos" className="nav"><Icon name="layers"/> Objetivos e formatos</Link>
       <Link href={"/recomendacoes" + selectedPeriod} className="nav"><Icon name="spark"/> Recomendações</Link>
       <Link href={"/historico" + selectedPeriod} className="nav"><Icon name="chart"/> Histórico analítico</Link>
     </nav>
