@@ -116,4 +116,30 @@ class MetaAdsClientTest {
             server.stop(0);
         }
     }
+
+    @Test void adFormatsUseCampaignScopedPathsAndNeverExposeMetaTokenInUri() throws Exception {
+        var server=HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(),0),0);
+        var paths=new java.util.concurrent.CopyOnWriteArrayList<String>();
+        server.createContext("/",exchange->{
+            paths.add(exchange.getRequestURI().toString());
+            byte[] response="{\"data\":[]}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type","application/json");
+            exchange.sendResponseHeaders(200,response.length);
+            try(var out=exchange.getResponseBody()){out.write(response);}
+        });
+        server.start();
+        try {
+            var settings=new MetaSettings("v26.0","497208073675481","fake-secret",
+                    "http://127.0.0.1:"+server.getAddress().getPort());
+            var client=new MetaAdsClient(RestClient.builder(),settings);
+            assertTrue(client.adsets("52597352471388",100,null).data().isEmpty());
+            assertTrue(client.ads("52597352471388",100,null).data().isEmpty());
+            assertEquals(2,paths.size());
+            assertTrue(paths.get(0).startsWith("/v26.0/52597352471388/adsets?"));
+            assertTrue(paths.get(1).startsWith("/v26.0/52597352471388/ads?"));
+            assertTrue(paths.get(1).contains("creative%7Bid%2Cobject_type"));
+            assertTrue(paths.stream().noneMatch(x->x.contains("fake-secret")));
+        }finally{server.stop(0);}
+    }
+
 }
