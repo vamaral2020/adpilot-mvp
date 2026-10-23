@@ -6,6 +6,7 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,14 +18,24 @@ public class MetaAdsController {
     private final MetaAdsClient client;
     private final MetaInsightsSummaryService summaryService;
     private final MetaPurchaseAuditService purchaseAudit;
+    private final MetaFormatService formatService;
 
     public MetaAdsController(MetaSettings settings, MetaAdsClient client,
                              MetaInsightsSummaryService summaryService,
-                             MetaPurchaseAuditService purchaseAudit) {
+                             MetaPurchaseAuditService purchaseAudit,
+                             MetaFormatService formatService) {
         this.settings = settings;
         this.client = client;
         this.summaryService = summaryService;
         this.purchaseAudit = purchaseAudit;
+        this.formatService=formatService;
+    }
+
+    @GetMapping("/campaigns/{campaignId}/formats")
+    public ResponseEntity<MetaFormatService.FormatReport> formats(
+            @PathVariable String campaignId) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(formatService.report(campaignId));
     }
 
     @GetMapping("/status")
