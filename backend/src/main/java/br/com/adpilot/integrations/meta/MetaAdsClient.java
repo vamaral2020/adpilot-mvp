@@ -130,7 +130,7 @@ public class MetaAdsClient {
         validatePage(limit,after);
         var params=new LinkedHashMap<String,Object>();
         params.put("fields","id,name,campaign_id,adset_id,status,effective_status,"
-                + "creative{id,object_type,object_story_spec,asset_feed_spec}");
+                + "creative{id,object_type,object_story_spec,asset_feed_spec,product_set_id}");
         params.put("limit",limit);
         if(after!=null && !after.isBlank()) params.put("after",after);
         return page(getCampaign(campaignId,"ads",params),
