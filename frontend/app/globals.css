@@ -740,3 +740,219 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
 .reconciliationState>p{line-height:1.65}
 @media(max-width:900px){.reconciliationSources{grid-template-columns:1fr}
  .reconciliationRatios{grid-template-columns:1fr}}
+
+
+/* PR036: A4-safe, high-contrast print stylesheet for the reconciliation report.
+   The global print palette uses dark body text, so dark historical panels
+   require explicit light surfaces and foreground colors. Screen unaffected. */
+@media print {
+  .reconciliationPage {
+    max-width:none!important;
+    width:100%!important;
+    padding:0!important;
+    margin:0!important;
+    color:#172a42!important;
+    background:#fff!important;
+  }
+  .reconciliationPage .historyNav,
+  .reconciliationPage .filterPanel,
+  .reconciliationPage .historyRecommendationsLink {
+    display:none!important;
+  }
+  .reconciliationPage .historyHeader {
+    margin:0 0 12px!important;
+    padding:0!important;
+  }
+  .reconciliationPage .historyHeader h1 {
+    font-size:25px!important;
+    line-height:1.2!important;
+    color:#152b43!important;
+  }
+  .reconciliationPage .historyHeader p,
+  .reconciliationPage .historySmall,
+  .reconciliationPage .historySectionHead p,
+  .reconciliationPage .historyCard > p,
+  .reconciliationPage .historyOutcomePanel p,
+  .reconciliationPage .historyStorePanel p {
+    color:#42596f!important;
+  }
+  .reconciliationPage .smallEyebrow {
+    color:#315c86!important;
+  }
+  .reconciliationPage .historyCard,
+  .reconciliationPage .historyOutcomePanel,
+  .reconciliationPage .historyStorePanel {
+    background:#fff!important;
+    background-image:none!important;
+    color:#172a42!important;
+    border:1px solid #cbd7e2!important;
+    border-radius:9px!important;
+    padding:11px!important;
+    margin:0 0 10px!important;
+    box-shadow:none!important;
+  }
+  .reconciliationPage .historySectionHead {
+    gap:8px!important;
+  }
+  .reconciliationPage .historySectionHead h2,
+  .reconciliationPage .historyCard h2 {
+    color:#152b43!important;
+    font-size:15px!important;
+    margin:2px 0 5px!important;
+  }
+  .reconciliationPage .historySourceTag {
+    background:#eff5fa!important;
+    color:#365b7d!important;
+    border:1px solid #bdcfdf!important;
+    padding:5px 8px!important;
+    font-size:9px!important;
+  }
+  .reconciliationPage .reconciliationState {
+    background:#eff5fa!important;
+    border-left:3px solid #3a73b3!important;
+    break-inside:avoid;
+  }
+  .reconciliationPage .reconciliationSources {
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:9px!important;
+    align-items:start!important;
+  }
+  .reconciliationPage .reconciliationSources .historyOutcomePanel,
+  .reconciliationPage .reconciliationSources .historyStorePanel {
+    min-width:0!important;
+  }
+  .reconciliationPage .reconciliationMetrics {
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:5px!important;
+    margin-top:9px!important;
+  }
+  .reconciliationPage .reconciliationMetrics .historyMetric {
+    display:flex!important;
+    flex-direction:column!important;
+    min-height:0!important;
+    background:#f2f6fa!important;
+    border-color:#ccd9e4!important;
+    border-radius:7px!important;
+    padding:9px!important;
+    margin:0!important;
+    break-inside:avoid;
+  }
+  .reconciliationPage .historyMetric > span {
+    color:#425970!important;
+    font-size:10px!important;
+  }
+  .reconciliationPage .historyMetric > strong {
+    color:#172d45!important;
+    font-size:19px!important;
+    margin:4px 0!important;
+  }
+  .reconciliationPage .historyMetric > small {
+    color:#4c6075!important;
+    margin:0!important;
+    line-height:1.35!important;
+    font-size:9px!important;
+  }
+  .reconciliationPage .reconciliationRatios {
+    display:grid!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:7px!important;
+    margin-top:9px!important;
+  }
+  .reconciliationPage .reconciliationRatios > div {
+    min-width:0!important;
+    background:#f2f6fa!important;
+    border-color:#ccd9e4!important;
+    border-radius:7px!important;
+    padding:9px!important;
+    break-inside:avoid;
+  }
+  .reconciliationPage .reconciliationRatios small {
+    color:#43586d!important;
+    font-size:9px!important;
+  }
+  .reconciliationPage .reconciliationRatios strong {
+    color:#172d45!important;
+    font-size:18px!important;
+    line-height:1.2!important;
+    margin:5px 0!important;
+  }
+  .reconciliationPage .reconciliationRatios p {
+    color:#4c6075!important;
+    font-size:9px!important;
+    line-height:1.45!important;
+  }
+  .reconciliationPage .tableScroll {
+    overflow:visible!important;
+    max-width:100%!important;
+  }
+  .reconciliationPage .historyCampaignTable {
+    width:100%!important;
+    min-width:0!important;
+    table-layout:fixed!important;
+    border-collapse:collapse!important;
+  }
+  .reconciliationPage .historyCampaignTable thead {
+    display:table-header-group!important;
+  }
+  .reconciliationPage .historyCampaignTable tr {
+    break-inside:avoid!important;
+  }
+  .reconciliationPage .historyCampaignTable th,
+  .reconciliationPage .historyCampaignTable td {
+    display:table-cell!important;
+    min-width:0!important;
+    max-width:none!important;
+    width:auto;
+    padding:6px 4px!important;
+    font-size:8px!important;
+    line-height:1.35!important;
+    overflow-wrap:anywhere!important;
+    word-break:normal!important;
+    white-space:normal!important;
+    color:#263c53!important;
+    border-color:#d7e0e9!important;
+  }
+  .reconciliationPage .historyCampaignTable th {
+    color:#526779!important;
+    font-size:7px!important;
+  }
+  .reconciliationPage .historyCampaignTable td:first-child {
+    min-width:0!important;
+    max-width:none!important;
+  }
+  .reconciliationPage .historyCampaignId {
+    color:#5a7189!important;
+    font-size:8px!important;
+  }
+  .reconciliationPage section[aria-labelledby="reconciliation-campaigns"]
+  .historyCampaignTable th:first-child {
+    width:37%!important;
+  }
+  .reconciliationPage section[aria-labelledby="reconciliation-daily"]
+  .historyCampaignTable th:first-child {
+    width:19%!important;
+  }
+  .reconciliationPage .historyCoverageMetrics {
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+    gap:6px!important;
+    margin:9px 0!important;
+  }
+  .reconciliationPage .historyCoverageMetrics > div {
+    min-width:0!important;
+    background:#f2f6fa!important;
+    border-color:#ccd9e4!important;
+    padding:8px!important;
+    gap:5px!important;
+    break-inside:avoid;
+  }
+  .reconciliationPage .historyCoverageMetrics small {
+    color:#496279!important;
+    font-size:9px!important;
+  }
+  .reconciliationPage .historyCoverageMetrics strong {
+    color:#172d45!important;
+    font-size:18px!important;
+  }
+}
