@@ -88,6 +88,46 @@ public class MetaAdsClient {
         return page(get("insights", params), INSIGHT_FIELDS);
     }
 
+    /**
+     * A campaign-scoped, read-only view of ad sets, including the optimization
+     * goal and destination. Never include audience targeting or user data.
+     */
+    public MetaPage adsets(String campaignId, int limit, String after) {
+        validateCampaignId(campaignId);
+        validatePage(limit,after);
+        var params=new LinkedHashMap<String,Object>();
+        params.put("fields","id,name,campaign_id,optimization_goal,destination_type,status,effective_status");
+        params.put("limit",limit);
+        if(after!=null && !after.isBlank()) params.put("after",after);
+        return page(getCampaign(campaignId,"adsets",params),
+                List.of("id","name","campaign_id","optimization_goal","destination_type",
+                        "status","effective_status"));
+    }
+
+    /**
+     * Creative specifications are internal to the adapter. The controller must
+     * only return a format category and fixed allowlisted metadata, never raw
+     * story specs, asset-feed specs, destination URLs, ad text or tokens.
+     */
+    public MetaPage ads(String campaignId, int limit, String after) {
+        validateCampaignId(campaignId);
+        validatePage(limit,after);
+        var params=new LinkedHashMap<String,Object>();
+        params.put("fields","id,name,campaign_id,adset_id,status,effective_status,"
+                + "creative{id,object_type,object_story_spec,asset_feed_spec}");
+        params.put("limit",limit);
+        if(after!=null && !after.isBlank()) params.put("after",after);
+        return page(getCampaign(campaignId,"ads",params),
+                List.of("id","name","campaign_id","adset_id","status","effective_status",
+                        "creative"));
+    }
+
+    private static void validateCampaignId(String id) {
+        if(id==null || !id.matches("[0-9]{1,40}"))
+            throw new MetaApiException(HttpStatus.BAD_REQUEST,"INVALID_CAMPAIGN_ID",
+                    "Informe um identificador numerico de campanha.");
+    }
+
     private static void validatePage(int limit, String after) {
         if (limit < 1 || limit > MAX_PAGE || (after != null && after.length() > 2048)) {
             throw new MetaApiException(HttpStatus.BAD_REQUEST, "INVALID_PAGINATION",
@@ -102,6 +142,18 @@ public class MetaAdsClient {
         }
         String path = "/" + settings.version() + "/act_" + settings.accountId()
                 + (endpoint.isEmpty() ? "" : "/" + endpoint);
+        return getPath(path,query);
+    }
+
+    private Map<String,Object> getCampaign(String campaignId,String edge,Map<String,?> query) {
+        if (!settings.configured()) {
+            throw new MetaApiException(HttpStatus.SERVICE_UNAVAILABLE,"META_NOT_CONFIGURED",
+                    "Configure a conta Meta e o token de acesso.");
+        }
+        return getPath("/"+settings.version()+"/"+campaignId+"/"+edge,query);
+    }
+
+    private Map<String,Object> getPath(String path,Map<String,?> query) {
         try {
             var result = client.get()
                     .uri(buildUri(settings.baseUrl(), path, query))
