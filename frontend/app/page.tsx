@@ -79,6 +79,7 @@ function Sidebar({ period }: { period: Period }) {
       <Link href="/formatos" className="nav"><Icon name="layers"/> Objetivos e formatos</Link>
       <Link href={"/recomendacoes" + selectedPeriod} className="nav"><Icon name="spark"/> Recomendações</Link>
       <Link href={"/historico" + selectedPeriod} className="nav"><Icon name="chart"/> Histórico analítico</Link>
+      <Link href={"/conciliacao" + selectedPeriod} className="nav"><Icon name="layers"/> Conciliação comercial</Link>
     </nav>
     <div className="sidebarSection sidebarSectionSecond">GESTÃO</div>
     <nav aria-label="Módulos planejados" className="sideNav">

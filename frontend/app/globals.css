@@ -724,3 +724,19 @@ td{padding:18px 16px;border-bottom:1px solid #253448;font-size:12px;color:#cddbe
   background:var(--panel);color:var(--text);padding:6px 9px;font-size:11px}
 .formatComposition .formatCompositionNotice{font-size:12px;color:var(--muted);
   margin-top:10px;line-height:1.55}
+
+/* PR035: two independent financial sources, visibly not an audited ledger. */
+.reconciliationSources{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.reconciliationSources .historyStorePanel,.reconciliationSources .historyOutcomePanel{min-width:0}
+.reconciliationMetrics{display:grid;grid-template-columns:1fr;gap:10px}
+.reconciliationMetrics .historyMetric{min-width:0}
+.reconciliationRatios{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.reconciliationRatios>div{background:var(--panel2);border:1px solid var(--border);
+ border-radius:12px;padding:18px;min-width:0}
+.reconciliationRatios small{display:block;color:var(--muted);font-size:12px}
+.reconciliationRatios strong{display:block;margin:8px 0;font-size:26px;overflow-wrap:anywhere}
+.reconciliationRatios p{font-size:12px;line-height:1.5;color:var(--muted);margin:0}
+.reconciliationState{border-left:3px solid var(--accent)}
+.reconciliationState>p{line-height:1.65}
+@media(max-width:900px){.reconciliationSources{grid-template-columns:1fr}
+ .reconciliationRatios{grid-template-columns:1fr}}

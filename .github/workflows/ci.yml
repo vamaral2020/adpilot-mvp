@@ -343,6 +343,29 @@ jobs:
             'http://127.0.0.1:13000/formatos' -o /tmp/adpilot-pr032-formats.html
           grep -Fq 'Objetivos e formatos dos anúncios' /tmp/adpilot-pr032-formats.html
 
+          # PR035: historical reconciliation does not invent paid orders,
+          # attribute store orders to ads, or claim verified financial returns.
+          test "$(curl -s -o /dev/null -w '%{http_code}' \
+            'http://127.0.0.1:18080/api/v1/analytics/reconciliation?since=2026-10-14&until=2026-10-20')" = "401"
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:18080/api/v1/analytics/reconciliation?since=2026-10-14&until=2026-10-20' \
+            -o /tmp/adpilot-pr035-reconciliation.json
+          jq -e '.financiallyVerified==false
+            and .ordersMatchedToCampaigns==false
+            and .comparisonStatus=="INSUFFICIENT_OBSERVATIONS"
+            and .indicativeMer==null
+            and .store.identifiedPaidRevenue==null
+            and (.warnings|index("NOT_ORDER_TO_CAMPAIGN_RECONCILIATION")!=null)' \
+            /tmp/adpilot-pr035-reconciliation.json
+          test "$(curl -s -o /dev/null -w '%{http_code}' \
+            'http://127.0.0.1:13000/conciliacao')" = "401"
+          curl --fail --silent --show-error -u admin:ci-local-admin-password-123 \
+            'http://127.0.0.1:13000/conciliacao?since=2026-10-14&until=2026-10-20' \
+            -o /tmp/adpilot-pr035-reconciliation.html
+          grep -Fq 'Conciliação comercial' /tmp/adpilot-pr035-reconciliation.html
+          grep -Fq 'Registros insuficientes' /tmp/adpilot-pr035-reconciliation.html
+
+
 
       - name: Collect Docker diagnostics on failure
         if: failure()

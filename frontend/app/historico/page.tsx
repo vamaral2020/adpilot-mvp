@@ -240,6 +240,20 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
         </p>
       </section>
 
+      <section className="historyCard">
+        <div className="historySectionHead">
+          <div>
+            <h2>Comparar Meta Ads e Nuvemshop</h2>
+            <p>Receitas e gastos observados, critérios de confiança e limites
+              da conciliação sem vincular pedidos artificialmente.</p>
+          </div>
+          <Link className="historyRecommendationsLink"
+            href={"/conciliacao?since="+period.since+"&until="+period.until}>
+            Abrir conciliação →
+          </Link>
+        </div>
+      </section>
+
       <CoveragePanel coverage={history.coverage}/>
 
       {!history.complete && <div className="alertBanner caution" role="status">
