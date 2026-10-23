@@ -1381,3 +1381,73 @@ Não faz retry, não avança o cursor e não modifica o algoritmo de
 sincronização. Não presumir que HTTP 404 equivale a ausência de pedidos.
 
 Depois do diagnóstico, desabilitar a flag novamente.
+
+
+## PR 035 — Conciliação comercial indicativa Meta Ads × Nuvemshop
+
+O endpoint autenticado, local e somente leitura
+`GET /api/v1/analytics/reconciliation?since=YYYY-MM-DD&until=YYYY-MM-DD`
+reúne, para o **mesmo intervalo de datas solicitado** (até 90 dias),
+apenas os snapshots previamente armazenados pelo AdPilot. Ele **não**
+consulta Meta ou Nuvemshop em tempo real, não grava no banco e não
+dispara sincronizações nem alterações em campanhas. Usa a mesma
+validação de intervalo, histórico e comprovantes de coleta do módulo
+`/api/v1/analytics/history`.
+
+A interface em `http://localhost:13000/conciliacao`, acessível pelo
+menu principal e pelo Histórico Analítico, apresenta:
+
+- **Nuvemshop**: pedidos pagos elegíveis já identificados, receita desses
+  snapshots e dias presentes, por data de pagamento **UTC**.
+- **Meta Ads**: investimento, compras e receita **atribuídos pela Meta**,
+  com indicadores e nomes de campanhas Meta de forma separada.
+- **Visão diária pareada**: os dois conjuntos de observações no mesmo
+  calendário solicitado, mas **sem igualar os fusos, somar campanhas
+  à loja nem fabricar valores zero nos dias sem registro**.
+- **Comprovantes de qualidade**: dias efetivamente consultados na Meta,
+  dias consultados sem retorno, número de janelas de atualização
+  Nuvemshop, sinais de última sincronização.
+- **MER indicativo (não auditado)**: apenas se existir uma única moeda
+  em ambas as fontes, as moedas coincidirem, as duas fontes tiverem
+  dados, o período não incluir o dia UTC atual, houver comprovantes
+  de coleta da Meta para todos os dias sem dias vazios, uma única
+  conta Meta coerente, o gasto for positivo, existirem recibos da
+  Nuvemshop e ambas as últimas sincronizações estiverem concluídas
+  com sucesso. Fórmula observacional: receita *identificada nos
+  snapshots* / investimento Meta. Não é um MER certificado.
+- **ROAS atribuído indicativo**: receita atribuída / investimento
+  Meta, somente com evidências Meta suficientes.
+
+```bash
+curl -fsS -u admin \
+  'http://localhost:18080/api/v1/analytics/reconciliation?since=2026-10-20&until=2026-10-22' \
+  | jq '{
+      comparisonStatus,
+      financiallyVerified,
+      ordersMatchedToCampaigns,
+      meta,
+      store,
+      indicativeMer,
+      indicativeAttributedRoas,
+      coverage,
+      warnings
+    }'
+```
+
+**Limitações obrigatórias:** `financiallyVerified=false` e
+`ordersMatchedToCampaigns=false` em todas as respostas: não há
+`order_id`, `event_id`, `utm_campaign` ou outros identificadores
+confiáveis que unam uma venda Nuvemshop a uma campanha Meta no modelo
+histórico. A Meta contabiliza atribuições conforme sua janela; não são
+pagamentos comprovados. Os snapshots Nuvemshop são coletados por
+`updated_at` e **não constituem um ledger completo por `paid_at`**.
+Um dia sem registros não prova vendas iguais a zero. O dia da Meta usa
+o **fuso da conta de anúncios**, enquanto o pagamento usa **UTC**.
+Não são calculados vendas orgânicas, lucratividade, ROAS real, CAC
+ou receita incremental, nem atribuída receita da loja por campanha.
+Moedas distintas ou múltiplas nunca são somadas nem convertidas.
+
+Não há migration nem reprocessamento de pedidos nesta PR.
+`/api/v1/analytics/sync` continua sendo a rotina independente e
+explicitamente solicitada de coleta. A PR mantém as regras de
+vendas/tráfego/engajamento e as proteções de acesso existentes.
