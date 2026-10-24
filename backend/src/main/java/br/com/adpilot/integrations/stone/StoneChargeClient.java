@@ -82,6 +82,12 @@ public class StoneChargeClient {
                     .header(HttpHeaders.AUTHORIZATION,"Basic "+basic)
                     .header(HttpHeaders.ACCEPT,"application/json")
                     .retrieve()
+                    // Reject any provider redirect: never forward credentials.
+                    .onStatus(status -> status.is3xxRedirection(), (request, response) -> {
+                        throw new StoneChargeException(HttpStatus.BAD_GATEWAY,
+                                "STONE_REDIRECT_REJECTED",
+                                "Redirecionamento da API Stone rejeitado.");
+                    })
                     .body(Map.class);
         } catch (RestClientResponseException e) {
             int status=e.getStatusCode().value();
