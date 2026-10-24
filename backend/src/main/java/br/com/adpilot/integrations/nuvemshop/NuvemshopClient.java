@@ -45,10 +45,13 @@ public class NuvemshopClient {
             List.of("id", "status", "payment_status", "total", "currency");
     // PR042: provider + buyer-reported amounts. No transaction IDs or buyer PII.
     // PR046: limited cross-provider order-code evidence; never fetch customer data.
+    // PR048 adds only documented primitive order totals, not items or payment ledger.
     private static final String CROSS_PROVIDER_FIELDS =
-            "id,number,status,payment_status,total,currency,created_at,gateway,gateway_name,payment_details";
+            "id,number,status,payment_status,total,subtotal,discount,discount_gateway,"
+            + "shipping_cost_customer,currency,created_at,gateway,gateway_name,payment_details";
     private static final List<String> CROSS_PROVIDER_PROJECTION = List.of(
-            "id","number","status","payment_status","total","currency",
+            "id","number","status","payment_status","total","subtotal","discount",
+            "discount_gateway","shipping_cost_customer","currency",
             "created_at","gateway","gateway_name","payment_details");
     private static final String ORDER_PAYMENT_SIGNALS_FIELDS =
             "id,status,payment_status,total,currency,gateway,gateway_name,"

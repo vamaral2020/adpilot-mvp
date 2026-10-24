@@ -244,4 +244,67 @@ class StoneNuvemCorrelationServiceTest {
         assertTrue(result.audit().grossDifferenceDirectionAndMagnitude().isEmpty());
     }
 
+    @Test void compactNuvemshopUtcOffsetRestoresComparisonAndPreservesTimezones() {
+        var shopRow=shopRow("9001","158","paid","95.00","credit_card");
+        shopRow.put("created_at","2026-10-20T09:00:00-0300");
+        fixtures(List.of(shopRow),
+                List.of(order("or_aaa111","158","PAID",9500L)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","CREDIT_CARD")));
+        var report=service.inspect(50,10);
+        assertEquals(1,report.creationTimesComparable());
+        assertEquals(1,report.creationTimesWithin48Hours());
+        assertEquals(Map.of("PARSED",1),report.audit().candidateNuvemshopCreatedAtFields());
+        assertEquals(Map.of("ISO_OFFSET_COMPACT_HHMM",1),
+                report.investigation().candidateNuvemshopTimestampFormats());
+        assertFalse(report.financiallyVerified());
+        assertFalse(report.ordersMatchedToNuvemshop());
+        assertFalse(report.toString().contains("09:00:00"));
+    }
+
+    @Test void mismatchedGrossAmountsProduceOnlyArithmeticHypotheses() {
+        var first=shopRow("9001","158","paid","95.00","credit_card");
+        first.put("created_at","2026-10-20T09:00:00-0300");
+        first.put("subtotal","100.00");
+        first.put("discount","5.00");
+        first.put("discount_gateway","5.00");
+        first.put("shipping_cost_customer","0.00");
+        var second=shopRow("9002","159","paid","110.00","pix");
+        second.put("subtotal","100.00");
+        second.put("discount","0.00");
+        second.put("shipping_cost_customer","10.00");
+        fixtures(List.of(first,second),
+                List.of(order("or_aaa111","158","PAID",10000L),
+                        order("or_bbb222","159","PAID",12000L)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","CREDIT_CARD"),
+                        charge("ch_bbb222","or_bbb222","PAID","PIX")));
+        var result=service.inspect(50,10);
+        var diag=result.investigation();
+        assertEquals(2,result.amountsDifferent());
+        assertEquals(Map.of("SUBTOTAL_PRESENT",2,"DISCOUNT_PRESENT",2,
+                "SHIPPING_COST_PRESENT",2,"GATEWAY_DISCOUNT_PRESENT",1),
+                diag.mismatchedGrossComponentAvailability());
+        assertEquals(1,diag.grossMismatchesWhereProviderEqualsSubtotal());
+        assertEquals(1,diag.grossMismatchesWhereDifferenceEqualsDiscount());
+        assertEquals(1,diag.grossMismatchesWhereDifferenceEqualsCustomerShipping());
+        assertEquals(2,diag.grossMismatchesWithConsistentShopSubtotalPlusShippingMinusDiscount());
+        assertFalse(result.financiallyVerified());
+        assertFalse(result.paymentSettlementVerified());
+        assertFalse(result.ordersMatchedToCampaigns());
+        assertFalse(result.toString().contains("95.00"));
+        assertFalse(result.toString().contains("or_aaa111"));
+    }
+
+    @Test void missingComponentsAndTimestampWithoutOffsetNeverCreateFinancialProof() {
+        var row=shopRow("9001","158","paid","90.00","pix");
+        row.put("created_at","2026-10-20T12:00:00");
+        fixtures(List.of(row),List.of(order("or_aaa111","158","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","PIX")));
+        var result=service.inspect(50,10);
+        assertEquals(0,result.creationTimesComparable());
+        assertEquals(Map.of("LOCAL_WITHOUT_OFFSET",1),
+                result.investigation().candidateNuvemshopTimestampFormats());
+        assertEquals(0,result.investigation().grossMismatchesWhereDifferenceEqualsDiscount());
+        assertTrue(result.investigation().mismatchedGrossComponentAvailability().isEmpty());
+    }
+
 }
