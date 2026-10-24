@@ -143,4 +143,49 @@ class StoneHistoryClientTest {
             assertFalse(e.getMessage().contains("pii@example.com"));
         } finally {server.stop(0);}
     }
+    @Test void correlationProjectsOnlyMinimalOrderEvidenceAndUsesGet() throws Exception {
+        var observed=new AtomicReference<String>();
+        var server=serve(200,"""
+                {"data":[{"id":"or_abc12345","code":"158","status":"paid",
+                   "amount":12999,"currency":"BRL",
+                   "created_at":"2026-10-20T12:00:00Z",
+                   "customer":{"email":"PRIVATE@example.com"},
+                   "billing_address":{"street":"PRIVATE-STREET"},
+                   "metadata":{"secret":"SECRET-METADATA"}}],
+                 "paging":{"total":1,"next":null}}
+                ""","{}",observed);
+        try {
+            var page=client(server).correlationOrders(1,20);
+            assertEquals(1,page.data().size());
+            var result=page.data().getFirst();
+            assertEquals("or_abc12345",result.id());
+            assertEquals("158",result.code());
+            assertEquals("PAID",result.status());
+            assertEquals("BRL",result.currency());
+            assertEquals(12999L,result.amountCents());
+            assertEquals(java.time.Instant.parse("2026-10-20T12:00:00Z"),
+                    result.createdAt());
+            assertFalse(page.toString().contains("PRIVATE@example.com"));
+            assertFalse(page.toString().contains("PRIVATE-STREET"));
+            assertFalse(page.toString().contains("SECRET-METADATA"));
+            assertTrue(observed.get().startsWith("GET|/core/v5/orders?page=1&size=20|Basic "));
+        } finally {server.stop(0);}
+    }
+
+    @Test void malformedMonetaryAndDateFieldsRemainUncomparableNotZero() throws Exception {
+        var observed=new AtomicReference<String>();
+        var server=serve(200,"""
+                {"data":[{"id":"or_abc12345","code":"158","status":"paid",
+                   "amount":"129.99","currency":"USD",
+                   "created_at":"invalid-timestamp"}],
+                 "paging":{"total":1,"next":null}}
+                ""","{}",observed);
+        try {
+            var result=client(server).correlationOrders(1,20).data().getFirst();
+            assertNull(result.amountCents());
+            assertNull(result.createdAt());
+            assertEquals("UNKNOWN",result.currency());
+        } finally {server.stop(0);}
+    }
+
 }
