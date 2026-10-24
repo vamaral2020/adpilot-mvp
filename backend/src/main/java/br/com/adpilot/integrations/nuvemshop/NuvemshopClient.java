@@ -53,6 +53,13 @@ public class NuvemshopClient {
             "id","number","status","payment_status","total","subtotal","discount",
             "discount_gateway","shipping_cost_customer","currency",
             "created_at","gateway","gateway_name","payment_details");
+    // PR049: last validated PR047 projection, used only if the expanded PR048
+    // order list responds 404. Missing monetary components stay null, never zero.
+    private static final String CROSS_PROVIDER_BASELINE_FIELDS =
+            "id,number,status,payment_status,total,currency,created_at,gateway,gateway_name,payment_details";
+    private static final List<String> CROSS_PROVIDER_BASELINE_PROJECTION = List.of(
+            "id","number","status","payment_status","total","currency",
+            "created_at","gateway","gateway_name","payment_details");
     private static final String ORDER_PAYMENT_SIGNALS_FIELDS =
             "id,status,payment_status,total,currency,gateway,gateway_name,"
             + "total_paid_by_customer,total_paid_by_customer_including_fees,payment_details";
@@ -184,6 +191,15 @@ public class NuvemshopClient {
     public NuvemshopPage orderCrossProviderCandidates(int page,int perPage) {
         return read("orders",CROSS_PROVIDER_FIELDS,page,perPage,
                 CROSS_PROVIDER_PROJECTION,"payment_details",PAYMENT_METHOD_PROJECTION);
+    }
+
+    /**
+     * PR049: original PR047 fields, only for an explicit same-call 404 fallback.
+     * The service owns fallback selection to keep paging consistent across a run.
+     */
+    public NuvemshopPage orderCrossProviderCandidatesBaseline(int page,int perPage) {
+        return read("orders",CROSS_PROVIDER_BASELINE_FIELDS,page,perPage,
+                CROSS_PROVIDER_BASELINE_PROJECTION,"payment_details",PAYMENT_METHOD_PROJECTION);
     }
 
     /**
