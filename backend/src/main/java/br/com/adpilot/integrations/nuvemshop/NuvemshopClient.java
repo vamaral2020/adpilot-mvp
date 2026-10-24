@@ -44,6 +44,12 @@ public class NuvemshopClient {
     private static final List<String> ORDER_VALUE_AUDIT_PROJECTION =
             List.of("id", "status", "payment_status", "total", "currency");
     // PR042: provider + buyer-reported amounts. No transaction IDs or buyer PII.
+    // PR046: limited cross-provider order-code evidence; never fetch customer data.
+    private static final String CROSS_PROVIDER_FIELDS =
+            "id,number,status,payment_status,total,currency,created_at,payment_details";
+    private static final List<String> CROSS_PROVIDER_PROJECTION = List.of(
+            "id","number","status","payment_status","total","currency",
+            "created_at","payment_details");
     private static final String ORDER_PAYMENT_SIGNALS_FIELDS =
             "id,status,payment_status,total,currency,gateway,gateway_name,"
             + "total_paid_by_customer,total_paid_by_customer_including_fees,payment_details";
@@ -170,6 +176,12 @@ public class NuvemshopClient {
                 ORDER_PAYMENT_SIGNALS_PROJECTION, "payment_details", PAYMENT_METHOD_PROJECTION);
     }
 
+
+    /** PR046: read-only evidence. Only the payment_details.method child is kept. */
+    public NuvemshopPage orderCrossProviderCandidates(int page,int perPage) {
+        return read("orders",CROSS_PROVIDER_FIELDS,page,perPage,
+                CROSS_PROVIDER_PROJECTION,"payment_details",PAYMENT_METHOD_PROJECTION);
+    }
 
     /**
      * Read-only diagnostic: compare field presence in an individual Order detail
