@@ -38,6 +38,11 @@ public class NuvemshopClient {
     private static final List<String> PAYMENT_AUDIT_PROJECTION =
             List.of("id", "payment_status", "paid_at", "created_at", "updated_at",
                     "status", "shipping_status", "gateway", "storefront", "app_id");
+    // PR040: read gross order fields only; exclude customer, items and transactions.
+    private static final String ORDER_VALUE_AUDIT_FIELDS =
+            "id,status,payment_status,total,currency";
+    private static final List<String> ORDER_VALUE_AUDIT_PROJECTION =
+            List.of("id", "status", "payment_status", "total", "currency");
     private static final List<String> PRODUCT_PROJECTION = List.of("id", "name", "handle", "variants");
     private static final List<String> VARIANT_PROJECTION =
             List.of("id", "sku", "price", "promotional_price", "stock", "stock_management");
@@ -136,6 +141,16 @@ public class NuvemshopClient {
     public NuvemshopPage paymentAuditOrders(int page, int perPage) {
         return read("orders", PAYMENT_AUDIT_FIELDS, page, perPage,
                 PAYMENT_AUDIT_PROJECTION, "", List.of());
+    }
+
+    /**
+     * Operator-only gross-order value comparison; read-only and unfiltered.
+     * No PII, line items, payment transaction amounts or refunds are fetched.
+     * Does not advance the analytics cursor or modify any saved snapshots.
+     */
+    public NuvemshopPage orderValueAuditOrders(int page, int perPage) {
+        return read("orders", ORDER_VALUE_AUDIT_FIELDS, page, perPage,
+                ORDER_VALUE_AUDIT_PROJECTION, "", List.of());
     }
 
 
