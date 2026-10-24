@@ -81,6 +81,7 @@ public class StoneNuvemCorrelationService {
             int grossMismatchesWhereDifferenceEqualsDiscount,
             int grossMismatchesWhereDifferenceEqualsCustomerShipping,
             int grossMismatchesWithConsistentShopSubtotalPlusShippingMinusDiscount,
+            String nuvemshopReadMode,
             List<String> cautions) {}
 
     private record ShopOrder(String id,String number,String paymentStatus,String currency,
@@ -125,10 +126,29 @@ public class StoneNuvemCorrelationService {
                     "INVALID_CORRELATION_PAGINATION","pageSize 1..50, maxPages 1..10.");
 
         var shopAcc=new Acc();
+        // Request-scoped selection. A 404 on the expanded FIRST page triggers
+        // a single baseline check; if that also fails the original error propagates.
+        // Other error codes NEVER cause fallback. Subsequent pages use the same
+        // field projection, never silently mix orders from different schemas.
+        boolean baselineProjection=false;
         Map<String,ShopOrder> shops=new HashMap<>();
         Map<String,Set<String>> byNumber=new HashMap<>();
         for(int p=1;p<=maxPages;p++) {
-            NuvemshopPage page=nuvem.orderCrossProviderCandidates(p,pageSize);
+            NuvemshopPage page;
+            if(baselineProjection) {
+                page=nuvem.orderCrossProviderCandidatesBaseline(p,pageSize);
+            } else {
+                try {
+                    page=nuvem.orderCrossProviderCandidates(p,pageSize);
+                } catch(NuvemshopException ex) {
+                    if(p!=1 || ex.upstreamStatus()==null || ex.upstreamStatus()!=404)
+                        throw ex;
+                    // Do not label the expanded fields as invalid: 404 alone is
+                    // ambiguous. Baseline success establishes a usable alternative.
+                    page=nuvem.orderCrossProviderCandidatesBaseline(p,pageSize);
+                    baselineProjection=true;
+                }
+            }
             if(page==null||page.data()==null||page.data().size()>pageSize)
                 throw badNuvem();
             var pageIds=new ArrayList<String>();
@@ -324,6 +344,10 @@ public class StoneNuvemCorrelationService {
                 ||!providerAcc.report().paginationReconciled()
                 ||!chargeAcc.report().paginationReconciled())
             warnings.add("INCOMPLETE_OR_UNSTABLE_PAGINATION");
+        if(baselineProjection) {
+            warnings.add("NUVEMSHOP_EXPANDED_ORDER_FIELDS_RETURNED_404_BASELINE_SUCCEEDED");
+            warnings.add("NUVEMSHOP_FINANCIAL_COMPONENTS_NOT_REQUESTED_AFTER_FALLBACK");
+        }
         if(unsupported>0) warnings.add("PROVIDER_EXTERNAL_CODES_NOT_CANONICAL_NUMERIC");
         if(ambiguous>0 || collision>0) warnings.add("AMBIGUOUS_OR_DUPLICATE_CORRELATION");
         if(moneyDifferent>0) warnings.add("GROSS_AMOUNT_DISAGREEMENT_ON_CANDIDATES");
@@ -352,6 +376,7 @@ public class StoneNuvemCorrelationService {
                 Map.copyOf(mismatchedComponents),mismatchSubtotalParity,
                 mismatchDiscountParity,mismatchShippingParity,
                 mismatchShopComponentsConsistent,
+                baselineProjection?"BASELINE_AFTER_EXPANDED_404":"EXPANDED",
                 List.of("COMPONENT_ARITHMETIC_IS_ONLY_DIAGNOSTIC_NOT_CAUSAL_PROOF",
                         "SHOP_TOTAL_CAN_INCLUDE_SHIPPING_AND_DISCOUNTS",
                         "NO_CHARGE_CAPTURE_OR_PAYOUT_VERIFIED",
