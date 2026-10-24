@@ -211,6 +211,56 @@ class NuvemshopIntegrationTest {
         }
     }
 
+    @Test void orderValueAuditFetchesOnlyMinimalGrossFieldsWithoutPersonalData()
+            throws Exception {
+        var seenUri = new AtomicReference<String>();
+        var method = new AtomicReference<String>();
+        var server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(),0),0);
+        server.createContext("/", exchange -> {
+            seenUri.set(exchange.getRequestURI().toString());
+            method.set(exchange.getRequestMethod());
+            assertEquals("Bearer test-bearer",
+                    exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] body = """
+                    [{"id":99,"status":"open","payment_status":"paid",
+                      "total":"135.20","currency":"BRL","paid_at":"2026-10-20T12:00:00Z",
+                      "customer":{"email":"do-not-return@example.com"},
+                      "payment_details":{"card":"PRIVATE-CARD-TOKEN"}}]
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type","application/json");
+            exchange.getResponseHeaders().set("x-total-count","1");
+            exchange.sendResponseHeaders(200,body.length);
+            try(var out=exchange.getResponseBody()) { out.write(body); }
+        });
+        server.start();
+        try {
+            var repo = mock(NuvemshopRepository.class);
+            var props = settings("http://127.0.0.1:"+server.getAddress().getPort(),
+                    "https://www.nuvemshop.com.br");
+            var crypto = new NuvemshopCrypto(props);
+            when(repo.installation()).thenReturn(Optional.of(
+                    new NuvemshopRepository.Installation("789","read_orders",
+                            crypto.encrypt("test-bearer"),java.time.Instant.now())));
+            var client = new NuvemshopClient(props,repo,crypto,RestClient.builder());
+            var result = client.orderValueAuditOrders(1,100);
+            assertEquals("GET",method.get());
+            assertTrue(seenUri.get().startsWith("/2025-03/789/orders?"));
+            assertTrue(java.net.URLDecoder.decode(seenUri.get(),StandardCharsets.UTF_8)
+                    .contains("fields=id,status,payment_status,total,currency"));
+            assertFalse(seenUri.get().contains("customer"));
+            assertFalse(seenUri.get().contains("paid_at"));
+            assertFalse(seenUri.get().contains("updated_at_min"));
+            assertEquals(1,result.data().size());
+            assertEquals(5,result.data().getFirst().size());
+            assertEquals("135.20",result.data().getFirst().get("total"));
+            assertEquals("BRL",result.data().getFirst().get("currency"));
+            assertFalse(result.toString().contains("do-not-return@example.com"));
+            assertFalse(result.toString().contains("PRIVATE-CARD-TOKEN"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
     @Test void diagnosticsFetchFilteredAndUnfilteredJsonButCallerControlsLogging()
             throws Exception {
         var seenUris = new java.util.ArrayList<String>();
