@@ -63,7 +63,14 @@ public class StoneHistoryClient {
     public record ProviderOrder(String id,String status,boolean codePresent) {}
     /** Raw reference stays in memory only and MUST NOT be serialized by controllers. */
     public record CrossReferenceOrder(String id,String code,String status,
-            String currency,Long amountCents,Instant createdAt) {}
+            String currency,Long amountCents,Instant createdAt,String createdAtFieldStatus) {
+        // Compatibility for PR046 fixtures and existing callers.
+        public CrossReferenceOrder(String id,String code,String status,
+                String currency,Long amountCents,Instant createdAt) {
+            this(id,code,status,currency,amountCents,createdAt,
+                    createdAt==null?"ABSENT_OR_NULL":"PARSED");
+        }
+    }
 
     public record ProviderCharge(String id,String providerOrderId,String status,
             String method,boolean amountPresent,boolean paidAmountPresent) {}
@@ -103,7 +110,8 @@ public class StoneHistoryClient {
             records.add(new CrossReferenceOrder(id,code,
                     safeEnum(row.get("status"),ORDER_STATES),
                     "BRL".equals(row.get("currency"))?"BRL":"UNKNOWN",
-                    amountCents(row.get("amount")),date(row.get("created_at"))));
+                    amountCents(row.get("amount")),date(row.get("created_at")),
+                    dateFieldStatus(row.get("created_at"))));
         }
         return page(response,records);
     }
@@ -117,7 +125,16 @@ public class StoneHistoryClient {
 
     private static Instant date(Object raw) {
         if(!(raw instanceof String value)||value.length()>40) return null;
-        try {return Instant.parse(value);} catch(DateTimeParseException e) {return null;}
+        try { return Instant.parse(value); }
+        catch(DateTimeParseException ignored) {
+            try { return java.time.OffsetDateTime.parse(value).toInstant(); }
+            catch(DateTimeParseException e) { return null; }
+        }
+    }
+
+    private static String dateFieldStatus(Object raw) {
+        if(raw==null) return "ABSENT_OR_NULL";
+        return date(raw)==null?"UNPARSEABLE":"PARSED";
     }
 
     public Page<ProviderCharge> charges(int page,int size) {
