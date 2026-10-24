@@ -309,6 +309,52 @@ public class StoneNuvemCorrelationService {
                 false,false,false,false,List.copyOf(warnings),audit);
     }
 
+    private static String unsupportedCodeCategory(String code) {
+        // Fixed categories only: do not return dynamic code text, prefixes or lengths.
+        boolean hasDigits=code.matches("(?s).*[0-9].*");
+        boolean hasAsciiLetters=code.matches("(?s).*[A-Za-z].*");
+        if(hasDigits && hasAsciiLetters) return "MIXED_ASCII_LETTERS_AND_DIGITS";
+        if(hasDigits) return "DIGITS_WITH_NONCANONICAL_CHARACTERS";
+        return "OTHER_NONNUMERIC_FORMAT";
+    }
+
+    private static String differenceCategory(long providerCents,long shopCents) {
+        long delta=providerCents-shopCents;
+        String side=delta>0?"PAGARME_GREATER":"NUVEMSHOP_GREATER";
+        long abs=Math.abs(delta);
+        String band=abs<=100?"UP_TO_1_BRL"
+                :abs<=1000?"OVER_1_UP_TO_10_BRL":"OVER_10_BRL";
+        return side+"_"+band;
+    }
+
+    private static String dateFieldStatus(Object raw) {
+        if(raw==null) return "ABSENT_OR_NULL";
+        return timestamp(raw)==null?"UNPARSEABLE":"PARSED";
+    }
+
+    private static String gatewayHint(Object gateway,Object gatewayName) {
+        String a=gatewayLabel(gateway),b=gatewayLabel(gatewayName);
+        if(("STONE_OR_PAGARME".equals(a) && "OTHER".equals(b))
+                || ("OTHER".equals(a) && "STONE_OR_PAGARME".equals(b)))
+            return "CONFLICTING_LABELS";
+        if("STONE_OR_PAGARME".equals(a) || "STONE_OR_PAGARME".equals(b))
+            return "STONE_OR_PAGARME_REPORTED";
+        if("OTHER".equals(a) || "OTHER".equals(b)) return "OTHER_REPORTED";
+        return "UNKNOWN_OR_MISSING";
+    }
+
+    private static String gatewayLabel(Object raw) {
+        if(!(raw instanceof String value) || value.isBlank() || value.length()>120)
+            return "UNKNOWN";
+        String code=value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]","");
+        return switch(code) {
+            case "stone","stonepsp","stonegateway","pspstone","gatewaystone",
+                 "pagarme","pagarmepsp" -> "STONE_OR_PAGARME";
+            case "nuvempago","nuvempay","mercadopago","offline","internal" -> "OTHER";
+            default -> "UNKNOWN";
+        };
+    }
+
     private static String digits(Object input) {
         if(input==null) return null;
         if(!(input instanceof Number || input instanceof String)) return null;
@@ -345,7 +391,10 @@ public class StoneNuvemCorrelationService {
     private static Instant timestamp(Object input) {
         if(!(input instanceof String s)||s.length()>40) return null;
         try {return OffsetDateTime.parse(s).toInstant();}
-        catch(DateTimeParseException e) {return null;}
+        catch(DateTimeParseException ignored) {
+            try {return Instant.parse(s);}
+            catch(DateTimeParseException e) {return null;}
+        }
     }
     private static StoneChargeException badStone() {
         return new StoneChargeException(HttpStatus.BAD_GATEWAY,
