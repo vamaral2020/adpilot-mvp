@@ -173,4 +173,75 @@ class StoneNuvemCorrelationServiceTest {
         verify(shop,never()).orderCrossProviderCandidates(2,50);
         verify(stone,never()).correlationOrders(2,50);
     }
+    @Test void auditClassifiesValueDirectionStatusMethodGatewayAndMissingDatesWithoutDetails() {
+        var otherGateway=shopRow("9001","158","paid","101.50","credit_card");
+        otherGateway.put("gateway","nuvempago");
+        otherGateway.put("gateway_name","Nuvem Pago");
+        otherGateway.put("created_at",null);
+        var stoneGateway=shopRow("9002","159","paid","80.00","pix");
+        stoneGateway.put("gateway","stone");
+        stoneGateway.put("gateway_name","Stone");
+        fixtures(List.of(otherGateway,stoneGateway),
+                List.of(new StoneHistoryClient.CrossReferenceOrder("or_aaa111",
+                                "158","FAILED","BRL",10000L,null,"UNPARSEABLE"),
+                        order("or_bbb222","159","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","FAILED","PIX"),
+                        charge("ch_bbb222","or_bbb222","PAID","PIX")));
+        var report=service.inspect(50,10);
+        var audit=report.audit();
+        assertEquals(2,report.uniqueOneToOneCandidates());
+        assertEquals(2,report.amountsDifferent());
+        assertEquals(Map.of(
+                "NUVEMSHOP_GREATER_OVER_1_UP_TO_10_BRL",1,
+                "PAGARME_GREATER_OVER_10_BRL",1),
+                audit.grossDifferenceDirectionAndMagnitude());
+        assertEquals(1,audit.grossDifferencesAlsoPaymentStateMismatch());
+        assertEquals(1,audit.grossDifferencesAlsoMethodMismatch());
+        assertEquals(1,audit.grossDifferencesWithOtherGatewayHint());
+        assertEquals(Map.of("UNPARSEABLE",1,"PARSED",1),
+                audit.candidateProviderCreatedAtFields());
+        assertEquals(Map.of("ABSENT_OR_NULL",1,"PARSED",1),
+                audit.candidateNuvemshopCreatedAtFields());
+        assertEquals(Map.of("OTHER_REPORTED",1,"STONE_OR_PAGARME_REPORTED",1),
+                audit.candidateGatewayHints());
+        assertEquals(0,audit.duplicateNuvemshopTargetGroups());
+        assertTrue(report.warnings().contains("ORDER_CREATION_TIMESTAMPS_INCOMPLETE_OR_UNPARSEABLE"));
+        assertTrue(report.warnings().contains("CANDIDATE_NUVEMSHOP_GATEWAY_MAY_DIFFER_FROM_STONE"));
+        assertFalse(report.financiallyVerified());
+        assertFalse(report.paymentSettlementVerified());
+        String safe=report.toString();
+        assertFalse(safe.contains("9001"));
+        assertFalse(safe.contains("or_aaa111"));
+        assertFalse(safe.contains("101.50"));
+        assertFalse(safe.contains("nuvempago"));
+    }
+
+    @Test void unsupportedExternalReferenceFormatsAreAggregatedNeverNormalized() {
+        fixtures(List.of(shopRow("9001","158","paid","100.00","pix")),
+                List.of(order("or_aaa111","VEST-158","PAID",10000),
+                        order("or_bbb222","158/2026","PAID",10000),
+                        order("or_ccc333","unknown","PAID",10000)),List.of());
+        var result=service.inspect(50,10);
+        assertEquals(3,result.providerCodesUnsupportedForExactMatch());
+        assertEquals(0,result.uniqueOneToOneCandidates());
+        assertEquals(Map.of("MIXED_ASCII_LETTERS_AND_DIGITS",1,
+                "DIGITS_WITH_NONCANONICAL_CHARACTERS",1,
+                "OTHER_NONNUMERIC_FORMAT",1),
+                result.audit().unsupportedCodeFormats());
+        assertFalse(result.toString().contains("VEST-158"));
+        assertFalse(result.toString().contains("158/2026"));
+        assertFalse(result.toString().contains("unknown"));
+    }
+
+    @Test void repeatedProviderCodesCountOneDuplicateTargetGroupWithoutTreatingItAsMatch() {
+        fixtures(List.of(shopRow("9001","158","paid","100.00","pix")),
+                List.of(order("or_aaa111","158","PAID",10000),
+                        order("or_bbb222","158","FAILED",10000)),List.of());
+        var result=service.inspect(50,10);
+        assertEquals(2,result.providerOrdersWithDuplicateTarget());
+        assertEquals(1,result.audit().duplicateNuvemshopTargetGroups());
+        assertEquals(0,result.uniqueOneToOneCandidates());
+        assertTrue(result.audit().grossDifferenceDirectionAndMagnitude().isEmpty());
+    }
+
 }

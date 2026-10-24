@@ -188,4 +188,31 @@ class StoneHistoryClientTest {
         } finally {server.stop(0);}
     }
 
+    @Test void correlationDateEvidenceDistinguishesAbsentAndUnparseableWithoutRawDates()
+            throws Exception {
+        var seen=new AtomicReference<String>();
+        var invalid=serve(200,"""
+                {"data":[{"id":"or_abc12345","code":"158","status":"paid",
+                   "currency":"BRL","amount":10000,
+                   "created_at":"NOT-AN-ISO-DATE-PRIVATE"}],
+                 "paging":{"total":1,"next":null}}
+                ""","{}",seen);
+        try {
+            var result=client(invalid).correlationOrders(1,20).data().getFirst();
+            assertNull(result.createdAt());
+            assertEquals("UNPARSEABLE",result.createdAtFieldStatus());
+            assertFalse(result.createdAtFieldStatus().contains("PRIVATE"));
+        } finally {invalid.stop(0);}
+        var absent=serve(200,"""
+                {"data":[{"id":"or_abc12345","code":"158","status":"paid",
+                   "currency":"BRL","amount":10000}],
+                 "paging":{"total":1,"next":null}}
+                ""","{}",seen);
+        try {
+            var result=client(absent).correlationOrders(1,20).data().getFirst();
+            assertNull(result.createdAt());
+            assertEquals("ABSENT_OR_NULL",result.createdAtFieldStatus());
+        } finally {absent.stop(0);}
+    }
+
 }
