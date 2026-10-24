@@ -52,7 +52,8 @@ public class StoneNuvemCorrelationService {
             int candidatesWithoutObservedProviderCharge,int candidatesWithMultipleProviderCharges,
             boolean financiallyVerified,boolean paymentSettlementVerified,
             boolean ordersMatchedToNuvemshop,boolean ordersMatchedToCampaigns,
-            List<String> warnings, AuditBreakdown audit) {}
+            List<String> warnings, AuditBreakdown audit,
+            InvestigationDiagnostics investigation) {}
 
     /**
      * PR047: coarse, aggregate-only quality evidence. Never serialize raw
@@ -69,9 +70,25 @@ public class StoneNuvemCorrelationService {
             Map<String,Integer> candidateGatewayHints,
             List<String> cautions) {}
 
+    /**
+     * Additional PR048 evidence on one-to-one exact-code candidates only.
+     * The arithmetic signals are hypotheses, NEVER provider settlement proof.
+     */
+    public record InvestigationDiagnostics(
+            Map<String,Integer> candidateNuvemshopTimestampFormats,
+            Map<String,Integer> mismatchedGrossComponentAvailability,
+            int grossMismatchesWhereProviderEqualsSubtotal,
+            int grossMismatchesWhereDifferenceEqualsDiscount,
+            int grossMismatchesWhereDifferenceEqualsCustomerShipping,
+            int grossMismatchesWithConsistentShopSubtotalPlusShippingMinusDiscount,
+            List<String> cautions) {}
+
     private record ShopOrder(String id,String number,String paymentStatus,String currency,
             Long cents,Instant createdAt,String paymentMethod,
-            String createdAtFieldStatus,String gatewayHint) {}
+            String createdAtFieldStatus,String gatewayHint,
+            String createdAtFormat,
+            Long subtotalCents,Long discountCents,Long discountGatewayCents,
+            Long shippingCostCents) {}
     private record Candidate(StoneHistoryClient.CrossReferenceOrder provider,
             ShopOrder shop,boolean byId,boolean byNumber) {}
 
@@ -127,7 +144,12 @@ public class StoneNuvemCorrelationService {
                         amountFromReais(raw.get("total")),timestamp(raw.get("created_at")),
                         method(raw.get("payment_details")),
                         dateFieldStatus(raw.get("created_at")),
-                        gatewayHint(raw.get("gateway"),raw.get("gateway_name")));
+                        gatewayHint(raw.get("gateway"),raw.get("gateway_name")),
+                        CrossProviderTimestamp.parse(raw.get("created_at")).formatClass(),
+                        amountFromReais(raw.get("subtotal")),
+                        amountFromReais(raw.get("discount")),
+                        amountFromReais(raw.get("discount_gateway")),
+                        amountFromReais(raw.get("shipping_cost_customer")));
                 shops.put(id,row);
                 byNumber.computeIfAbsent(number,k->new HashSet<>()).add(id);
             }
@@ -205,12 +227,17 @@ public class StoneNuvemCorrelationService {
         var providerDateStates=new java.util.TreeMap<String,Integer>();
         var shopDateStates=new java.util.TreeMap<String,Integer>();
         var gatewayHints=new java.util.TreeMap<String,Integer>();
+        var shopTimestampFormats=new java.util.TreeMap<String,Integer>();
+        var mismatchedComponents=new java.util.TreeMap<String,Integer>();
+        int mismatchSubtotalParity=0,mismatchDiscountParity=0,mismatchShippingParity=0;
+        int mismatchShopComponentsConsistent=0;
         int duplicateTargetGroups=(int)shopUsage.values().stream().filter(v->v>1).count();
         for(var c:candidates) {
             if(shopUsage.get(c.shop().id())!=1) {collision++;continue;}
             unique++;
             providerDateStates.merge(c.provider().createdAtFieldStatus(),1,Integer::sum);
             shopDateStates.merge(c.shop().createdAtFieldStatus(),1,Integer::sum);
+            shopTimestampFormats.merge(c.shop().createdAtFormat(),1,Integer::sum);
             gatewayHints.merge(c.shop().gatewayHint(),1,Integer::sum);
             boolean amountMismatch=false,paidStateMismatch=false,methodMismatch=false;
             if(c.byId() && c.byNumber()) viaBoth++;
@@ -257,6 +284,28 @@ public class StoneNuvemCorrelationService {
                 }
             }
             if(amountMismatch) {
+                var sh=c.shop();
+                if(sh.subtotalCents()!=null)
+                    mismatchedComponents.merge("SUBTOTAL_PRESENT",1,Integer::sum);
+                if(sh.discountCents()!=null)
+                    mismatchedComponents.merge("DISCOUNT_PRESENT",1,Integer::sum);
+                if(sh.discountGatewayCents()!=null)
+                    mismatchedComponents.merge("GATEWAY_DISCOUNT_PRESENT",1,Integer::sum);
+                if(sh.shippingCostCents()!=null)
+                    mismatchedComponents.merge("SHIPPING_COST_PRESENT",1,Integer::sum);
+                long gap=c.provider().amountCents()-sh.cents();
+                if(sh.subtotalCents()!=null
+                        && c.provider().amountCents().equals(sh.subtotalCents()))
+                    mismatchSubtotalParity++;
+                if(sh.discountCents()!=null && gap==sh.discountCents())
+                    mismatchDiscountParity++;
+                if(sh.shippingCostCents()!=null && gap==sh.shippingCostCents())
+                    mismatchShippingParity++;
+                if(sh.subtotalCents()!=null && sh.discountCents()!=null
+                        && sh.shippingCostCents()!=null
+                        && sh.subtotalCents()+sh.shippingCostCents()-sh.discountCents()
+                                ==sh.cents())
+                    mismatchShopComponentsConsistent++;
                 if(paidStateMismatch) differencesAlsoStatus++;
                 if(methodMismatch) differencesAlsoMethod++;
                 if("OTHER_REPORTED".equals(c.shop().gatewayHint())
@@ -299,6 +348,15 @@ public class StoneNuvemCorrelationService {
                         "NUMERIC_CODE_IS_UNVERIFIED_LINK_EVIDENCE",
                         "TIMESTAMPS_ARE_NOT_ATOMIC_ACROSS_SYSTEMS"));
 
+        var investigation=new InvestigationDiagnostics(Map.copyOf(shopTimestampFormats),
+                Map.copyOf(mismatchedComponents),mismatchSubtotalParity,
+                mismatchDiscountParity,mismatchShippingParity,
+                mismatchShopComponentsConsistent,
+                List.of("COMPONENT_ARITHMETIC_IS_ONLY_DIAGNOSTIC_NOT_CAUSAL_PROOF",
+                        "SHOP_TOTAL_CAN_INCLUDE_SHIPPING_AND_DISCOUNTS",
+                        "NO_CHARGE_CAPTURE_OR_PAYOUT_VERIFIED",
+                        "TIMESTAMP_MUST_CONTAIN_EXPLICIT_UTC_OFFSET"));
+
         return new Report("PAGARME_CORE_V5_NUVEMSHOP",
                 stone.keyEnvironment(),providerAcc.report(),chargeAcc.report(),
                 shopAcc.report(),withCode,unsupported,noMatch,ambiguous,collision,
@@ -306,7 +364,7 @@ public class StoneNuvemCorrelationService {
                 moneyUnknown,stateCompared,stateAligned,stateDifferent,
                 timesCompared,timesNear,timesFar,
                 methodsCompared,methodsEqual,methodsDifferent,noCharge,multipleCharges,
-                false,false,false,false,List.copyOf(warnings),audit);
+                false,false,false,false,List.copyOf(warnings),audit,investigation);
     }
 
     private static String unsupportedCodeCategory(String code) {
@@ -328,8 +386,7 @@ public class StoneNuvemCorrelationService {
     }
 
     private static String dateFieldStatus(Object raw) {
-        if(raw==null) return "ABSENT_OR_NULL";
-        return timestamp(raw)==null?"UNPARSEABLE":"PARSED";
+        return CrossProviderTimestamp.parse(raw).fieldStatus();
     }
 
     private static String gatewayHint(Object gateway,Object gatewayName) {
@@ -389,12 +446,7 @@ public class StoneNuvemCorrelationService {
         } catch(RuntimeException e) {return null;}
     }
     private static Instant timestamp(Object input) {
-        if(!(input instanceof String s)||s.length()>40) return null;
-        try {return OffsetDateTime.parse(s).toInstant();}
-        catch(DateTimeParseException ignored) {
-            try {return Instant.parse(s);}
-            catch(DateTimeParseException e) {return null;}
-        }
+        return CrossProviderTimestamp.parse(input).instant();
     }
     private static StoneChargeException badStone() {
         return new StoneChargeException(HttpStatus.BAD_GATEWAY,
