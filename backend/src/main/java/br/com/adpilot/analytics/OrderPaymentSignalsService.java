@@ -179,6 +179,10 @@ public class OrderPaymentSignalsService {
     private static String provider(Object gateway, Object name) {
         String a=providerToken(gateway);
         String b=providerToken(name);
+        // A bare Stone label is not proof of PSP or Gateway. An explicit
+        // companion label refines it, but conflicting concrete labels do not.
+        if ("STONE_UNSPECIFIED".equals(a) && isStoneSpecific(b)) return b;
+        if ("STONE_UNSPECIFIED".equals(b) && isStoneSpecific(a)) return a;
         if (!a.isEmpty() && !b.isEmpty() && !a.equals(b)) return "AMBIGUOUS";
         if (!a.isEmpty()) return a;
         if (!b.isEmpty()) return b;
@@ -186,15 +190,26 @@ public class OrderPaymentSignalsService {
         return "UNRECOGNIZED";
     }
 
+    private static boolean isStoneSpecific(String value) {
+        return "STONE_PSP".equals(value) || "STONE_GATEWAY".equals(value);
+    }
+
     private static String providerToken(Object raw) {
-        if (!(raw instanceof String value) || value.length()>120) return "";
+        if (!(raw instanceof String value) || value.isBlank() || value.length()>120) return "";
         String key=value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]","");
-        if (key.contains("pagarme")) return "PAGARME";
-        if (key.contains("mercadopago")) return "MERCADO_PAGO";
-        if (key.contains("nuvempago") || key.contains("nuvempay")) return "NUVEM_PAGO";
-        if (key.equals("offline")) return "OFFLINE";
-        if (key.equals("internal")) return "INTERNAL";
-        return "";
+        // Intentionally exact aliases: "notstone", URLs, dynamic IDs, etc.
+        // must never silently become a known settlement provider.
+        return switch (key) {
+            case "pagarme", "pagarmepsp" -> "PAGARME";
+            case "mercadopago" -> "MERCADO_PAGO";
+            case "nuvempago", "nuvempay" -> "NUVEM_PAGO";
+            case "stonepsp", "pspstone" -> "STONE_PSP";
+            case "stonegateway", "gatewaystone" -> "STONE_GATEWAY";
+            case "stone" -> "STONE_UNSPECIFIED";
+            case "offline" -> "OFFLINE";
+            case "internal" -> "INTERNAL";
+            default -> "";
+        };
     }
 
     private static String method(Object paymentDetails) {
