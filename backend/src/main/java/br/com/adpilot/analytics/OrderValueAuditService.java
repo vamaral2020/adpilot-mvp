@@ -120,6 +120,12 @@ public class OrderValueAuditService {
                 ids.add(id);
             }
 
+            // Validate all returned states before touching the local database.
+            for (var row : rows) {
+                if (safeStatus(row.get("status")) == null
+                        || safeStatus(row.get("payment_status")) == null) throw invalidData();
+            }
+
             // One parameterized query per upstream page; do not expose order IDs.
             var locals = repository.find(ids);
             for (int i = 0; i < rows.size(); i++) {
