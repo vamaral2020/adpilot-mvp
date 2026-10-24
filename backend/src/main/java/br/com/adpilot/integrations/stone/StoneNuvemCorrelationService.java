@@ -122,9 +122,11 @@ public class StoneNuvemCorrelationService {
         for(int p=1;p<=maxPages;p++) {
             var page=stone.correlationOrders(p,pageSize);
             var pageIds=new ArrayList<String>();
+            var uniqueOnPage=new HashSet<String>();
             for(var row:page.data()) {
                 pageIds.add(row.id());
-                if(!providerAcc.seen.contains(row.id())) providers.add(row);
+                if(!providerAcc.seen.contains(row.id()) && uniqueOnPage.add(row.id()))
+                    providers.add(row);
             }
             providerAcc.add(pageIds,page.total(),page.pagingMetadataPresent(),
                     page.hasNext(),pageSize);
@@ -136,9 +138,11 @@ public class StoneNuvemCorrelationService {
         for(int p=1;p<=maxPages;p++) {
             var page=stone.charges(p,pageSize);
             var pageIds=new ArrayList<String>();
+            var uniqueOnPage=new HashSet<String>();
             for(var charge:page.data()) {
                 pageIds.add(charge.id());
-                if(charge.providerOrderId()!=null && !chargeAcc.seen.contains(charge.id()))
+                if(charge.providerOrderId()!=null && !chargeAcc.seen.contains(charge.id())
+                        && uniqueOnPage.add(charge.id()))
                     chargesByOrder.computeIfAbsent(charge.providerOrderId(),
                             k->new ArrayList<>()).add(charge);
             }
