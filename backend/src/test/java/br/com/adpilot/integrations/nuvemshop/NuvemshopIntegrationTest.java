@@ -261,6 +261,78 @@ class NuvemshopIntegrationTest {
         }
     }
 
+    @Test void orderValueHistoryUsesReadOnlyEndpointAndDropsPrivateFields()
+            throws Exception {
+        var pathSeen = new AtomicReference<String>();
+        var methodSeen = new AtomicReference<String>();
+        var server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(),0),0);
+        server.createContext("/", exchange -> {
+            methodSeen.set(exchange.getRequestMethod());
+            pathSeen.set(exchange.getRequestURI().toString());
+            assertEquals("Bearer test-bearer",
+                    exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] body = """
+                    [{"status":"PAID","total_paid_diff":7500,
+                      "gateway_name":"SENSITIVE-MERCHANT-ACCOUNT",
+                      "customer":{"email":"private@example.com"},
+                      "payment_attempt_id":"PRIVATE-PAYMENT-TOKEN"}]
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type","application/json");
+            exchange.sendResponseHeaders(200,body.length);
+            try(var out = exchange.getResponseBody()) { out.write(body); }
+        });
+        server.start();
+        try {
+            var repo = mock(NuvemshopRepository.class);
+            var props = settings("http://127.0.0.1:"+server.getAddress().getPort(),
+                    "https://www.nuvemshop.com.br");
+            var crypto = new NuvemshopCrypto(props);
+            when(repo.installation()).thenReturn(Optional.of(
+                    new NuvemshopRepository.Installation("789","read_orders",
+                            crypto.encrypt("test-bearer"),java.time.Instant.now())));
+            var client = new NuvemshopClient(props,repo,crypto,RestClient.builder());
+            var values = client.orderValueHistory(99);
+            assertEquals("GET",methodSeen.get());
+            assertEquals("/2025-03/789/orders/99/history/values",pathSeen.get());
+            assertEquals(1,values.size());
+            assertEquals(2,values.getFirst().size());
+            assertEquals("PAID",values.getFirst().get("status"));
+            assertEquals(7500,((Number)values.getFirst().get("total_paid_diff")).intValue());
+            assertFalse(values.toString().contains("private@example.com"));
+            assertFalse(values.toString().contains("PRIVATE-PAYMENT-TOKEN"));
+            assertFalse(values.toString().contains("SENSITIVE-MERCHANT-ACCOUNT"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test void missingHistoryEndpointIsNotInterpretedAsZeroRefunds()
+            throws Exception {
+        var server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(),0),0);
+        server.createContext("/", exchange -> {
+            byte[] body = "not found".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(404,body.length);
+            try(var out = exchange.getResponseBody()) { out.write(body); }
+        });
+        server.start();
+        try {
+            var repo = mock(NuvemshopRepository.class);
+            var props = settings("http://127.0.0.1:"+server.getAddress().getPort(),
+                    "https://www.nuvemshop.com.br");
+            var crypto = new NuvemshopCrypto(props);
+            when(repo.installation()).thenReturn(Optional.of(
+                    new NuvemshopRepository.Installation("789","read_orders",
+                            crypto.encrypt("test-bearer"),java.time.Instant.now())));
+            var client = new NuvemshopClient(props,repo,crypto,RestClient.builder());
+            var error = assertThrows(NuvemshopException.class,
+                    ()->client.orderValueHistory(99));
+            assertEquals("ORDER_VALUE_HISTORY_NOT_FOUND",error.code());
+            assertEquals(404,error.upstreamStatus());
+        } finally {
+            server.stop(0);
+        }
+    }
+
     @Test void diagnosticsFetchFilteredAndUnfilteredJsonButCallerControlsLogging()
             throws Exception {
         var seenUris = new java.util.ArrayList<String>();
