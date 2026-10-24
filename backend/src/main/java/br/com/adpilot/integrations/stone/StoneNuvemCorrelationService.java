@@ -52,10 +52,26 @@ public class StoneNuvemCorrelationService {
             int candidatesWithoutObservedProviderCharge,int candidatesWithMultipleProviderCharges,
             boolean financiallyVerified,boolean paymentSettlementVerified,
             boolean ordersMatchedToNuvemshop,boolean ordersMatchedToCampaigns,
-            List<String> warnings) {}
+            List<String> warnings, AuditBreakdown audit) {}
+
+    /**
+     * PR047: coarse, aggregate-only quality evidence. Never serialize raw
+     * references, individual amounts, exact timestamps or gateway strings.
+     */
+    public record AuditBreakdown(Map<String,Integer> unsupportedCodeFormats,
+            int duplicateNuvemshopTargetGroups,
+            Map<String,Integer> grossDifferenceDirectionAndMagnitude,
+            int grossDifferencesAlsoPaymentStateMismatch,
+            int grossDifferencesAlsoMethodMismatch,
+            int grossDifferencesWithOtherGatewayHint,
+            Map<String,Integer> candidateProviderCreatedAtFields,
+            Map<String,Integer> candidateNuvemshopCreatedAtFields,
+            Map<String,Integer> candidateGatewayHints,
+            List<String> cautions) {}
 
     private record ShopOrder(String id,String number,String paymentStatus,String currency,
-            Long cents,Instant createdAt,String paymentMethod) {}
+            Long cents,Instant createdAt,String paymentMethod,
+            String createdAtFieldStatus,String gatewayHint) {}
     private record Candidate(StoneHistoryClient.CrossReferenceOrder provider,
             ShopOrder shop,boolean byId,boolean byNumber) {}
 
@@ -109,7 +125,9 @@ public class StoneNuvemCorrelationService {
                 ShopOrder row=new ShopOrder(id,number,status(raw.get("payment_status")),
                         "BRL".equals(raw.get("currency"))?"BRL":"UNKNOWN",
                         amountFromReais(raw.get("total")),timestamp(raw.get("created_at")),
-                        method(raw.get("payment_details")));
+                        method(raw.get("payment_details")),
+                        dateFieldStatus(raw.get("created_at")),
+                        gatewayHint(raw.get("gateway"),raw.get("gateway_name")));
                 shops.put(id,row);
                 byNumber.computeIfAbsent(number,k->new HashSet<>()).add(id);
             }
@@ -152,6 +170,7 @@ public class StoneNuvemCorrelationService {
         }
 
         int withCode=0,unsupported=0,noMatch=0,ambiguous=0;
+        var unsupportedFormats=new java.util.TreeMap<String,Integer>();
         var candidates=new ArrayList<Candidate>();
         var shopUsage=new HashMap<String,Integer>();
         for(var provider:providers) {
@@ -159,7 +178,11 @@ public class StoneNuvemCorrelationService {
             if(code==null || code.isBlank()) continue;
             withCode++;
             // Exact canonical numeric IDs only: no trimming, prefixes or fuzzy match.
-            if(!code.matches("[0-9]{1,30}")) {unsupported++;continue;}
+            if(!code.matches("[0-9]{1,30}")) {
+                unsupported++;
+                unsupportedFormats.merge(unsupportedCodeCategory(code),1,Integer::sum);
+                continue;
+            }
             Set<String> matches=new HashSet<>();
             if(shops.containsKey(code)) matches.add(code);
             matches.addAll(byNumber.getOrDefault(code,Set.of()));
