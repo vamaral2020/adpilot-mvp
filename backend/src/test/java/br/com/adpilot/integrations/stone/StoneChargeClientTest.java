@@ -149,4 +149,16 @@ class StoneChargeClientTest {
             assertEquals("PENDING",signal.status());
         } finally {server.stop(0);}
     }
+    @Test void rejectsRedirectsInsteadOfFollowingProviderToAnotherHost() throws Exception {
+        var seen=new AtomicReference<String>();
+        var server=server(302,
+                "{\"id\":\"ch_abc12345\",\"status\":\"paid\"}",seen);
+        try {
+            var error=assertThrows(StoneChargeException.class,
+                    ()->client(server).lookup("ch_abc12345"));
+            assertEquals("STONE_REDIRECT_REJECTED",error.code());
+            assertEquals(502,error.status().value());
+        } finally {server.stop(0);}
+    }
+
 }
