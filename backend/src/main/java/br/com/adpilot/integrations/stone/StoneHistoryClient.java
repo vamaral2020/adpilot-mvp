@@ -4,6 +4,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashSet;
@@ -59,6 +61,10 @@ public class StoneHistoryClient {
     }
 
     public record ProviderOrder(String id,String status,boolean codePresent) {}
+    /** Raw reference stays in memory only and MUST NOT be serialized by controllers. */
+    public record CrossReferenceOrder(String id,String code,String status,
+            String currency,Long amountCents,Instant createdAt) {}
+
     public record ProviderCharge(String id,String providerOrderId,String status,
             String method,boolean amountPresent,boolean paidAmountPresent) {}
     public record Page<T>(List<T> data,Long total,boolean hasNext,
@@ -85,6 +91,33 @@ public class StoneHistoryClient {
                     row.get("code") instanceof String code && !code.isBlank()));
         }
         return page(response,records);
+    }
+
+    /** Strictly projected order data for a bounded cross-provider diagnostic. */
+    public Page<CrossReferenceOrder> correlationOrders(int page,int size) {
+        Map<?,?> response=fetch("orders",page,size);
+        var records=new ArrayList<CrossReferenceOrder>();
+        for(Map<?,?> row:data(response)) {
+            String id=identifier(row.get("id"),"or_");
+            String code=row.get("code") instanceof String s && s.length()<=52 ? s:null;
+            records.add(new CrossReferenceOrder(id,code,
+                    safeEnum(row.get("status"),ORDER_STATES),
+                    "BRL".equals(row.get("currency"))?"BRL":"UNKNOWN",
+                    amountCents(row.get("amount")),date(row.get("created_at"))));
+        }
+        return page(response,records);
+    }
+
+    private static Long amountCents(Object raw) {
+        if(raw==null) return null;
+        if(!(raw instanceof Integer || raw instanceof Long)) return null;
+        long value=((Number)raw).longValue();
+        return value>=0 && value<=Integer.MAX_VALUE?value:null;
+    }
+
+    private static Instant date(Object raw) {
+        if(!(raw instanceof String value)||value.length()>40) return null;
+        try {return Instant.parse(value);} catch(DateTimeParseException e) {return null;}
     }
 
     public Page<ProviderCharge> charges(int page,int size) {
