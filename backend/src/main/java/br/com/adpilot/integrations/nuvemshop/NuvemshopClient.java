@@ -43,6 +43,14 @@ public class NuvemshopClient {
             "id,status,payment_status,total,currency";
     private static final List<String> ORDER_VALUE_AUDIT_PROJECTION =
             List.of("id", "status", "payment_status", "total", "currency");
+    // PR042: provider + buyer-reported amounts. No transaction IDs or buyer PII.
+    private static final String ORDER_PAYMENT_SIGNALS_FIELDS =
+            "id,status,payment_status,total,currency,gateway,gateway_name,"
+            + "total_paid_by_customer,total_paid_by_customer_including_fees,payment_details";
+    private static final List<String> ORDER_PAYMENT_SIGNALS_PROJECTION = List.of(
+            "id","status","payment_status","total","currency","gateway","gateway_name",
+            "total_paid_by_customer","total_paid_by_customer_including_fees","payment_details");
+    private static final List<String> PAYMENT_METHOD_PROJECTION = List.of("method");
     private static final List<String> PRODUCT_PROJECTION = List.of("id", "name", "handle", "variants");
     private static final List<String> VARIANT_PROJECTION =
             List.of("id", "sku", "price", "promotional_price", "stock", "stock_management");
@@ -151,6 +159,15 @@ public class NuvemshopClient {
     public NuvemshopPage orderValueAuditOrders(int page, int perPage) {
         return read("orders", ORDER_VALUE_AUDIT_FIELDS, page, perPage,
                 ORDER_VALUE_AUDIT_PROJECTION, "", List.of());
+    }
+
+    /**
+     * Provider/method classification and buyer-reported totals; no payment
+     * transaction references, credentials, cardholder or refund ledger.
+     */
+    public NuvemshopPage orderPaymentSignals(int page, int perPage) {
+        return read("orders", ORDER_PAYMENT_SIGNALS_FIELDS, page, perPage,
+                ORDER_PAYMENT_SIGNALS_PROJECTION, "payment_details", PAYMENT_METHOD_PROJECTION);
     }
 
 
@@ -520,7 +537,13 @@ public class NuvemshopClient {
         var safe = new LinkedHashMap<String, Object>();
         for (String field : fields) {
             Object value = source.get(field);
-            if (field.equals(nestedField) && value instanceof List<?> entries) {
+            if (field.equals(nestedField) && value instanceof Map<?,?> entryMap) {
+                var projected = new LinkedHashMap<String,Object>();
+                for (String allow : nestedAllowed) {
+                    if (entryMap.containsKey(allow)) projected.put(allow, entryMap.get(allow));
+                }
+                safe.put(field,projected);
+            } else if (field.equals(nestedField) && value instanceof List<?> entries) {
                 var nested = new ArrayList<Map<String, Object>>();
                 for (Object entry : entries) {
                     if (entry instanceof Map<?, ?> entryMap) {

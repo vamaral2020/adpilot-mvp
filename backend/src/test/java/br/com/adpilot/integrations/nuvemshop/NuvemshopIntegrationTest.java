@@ -261,6 +261,54 @@ class NuvemshopIntegrationTest {
         }
     }
 
+    @Test void orderPaymentSignalsProjectsNestedMethodWithoutBuyerPrivateFields()
+            throws Exception {
+        var pathSeen = new AtomicReference<String>();
+        var server=HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(),0),0);
+        server.createContext("/", exchange-> {
+            assertEquals("GET",exchange.getRequestMethod());
+            assertEquals("Bearer test-bearer",
+                    exchange.getRequestHeaders().getFirst("Authorization"));
+            pathSeen.set(exchange.getRequestURI().toString());
+            byte[] body="""
+                    [{"id":11,"status":"open","payment_status":"paid",
+                      "total":"100.00","currency":"BRL","gateway":"pagar.me",
+                      "gateway_name":"Pagar.me","total_paid_by_customer":"99.00",
+                      "total_paid_by_customer_including_fees":"103.00",
+                      "customer":{"email":"PRIVATE@example.com"},
+                      "payment_details":{"method":"credit_card",
+                        "credit_card_company":"PRIVATE-CARD-BRAND",
+                        "card_number":"SENSITIVE-CARD-NUMBER"}}]
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type","application/json");
+            exchange.getResponseHeaders().set("x-total-count","1");
+            exchange.sendResponseHeaders(200,body.length);
+            try(var stream=exchange.getResponseBody()) { stream.write(body); }
+        });
+        server.start();
+        try {
+            var repo=mock(NuvemshopRepository.class);
+            var props=settings("http://127.0.0.1:"+server.getAddress().getPort(),
+                    "https://www.nuvemshop.com.br");
+            var crypto=new NuvemshopCrypto(props);
+            when(repo.installation()).thenReturn(Optional.of(
+                    new NuvemshopRepository.Installation("789","read_orders",
+                            crypto.encrypt("test-bearer"),java.time.Instant.now())));
+            var client=new NuvemshopClient(props,repo,crypto,RestClient.builder());
+            var response=client.orderPaymentSignals(1,100);
+            assertEquals(1,response.data().size());
+            assertTrue(java.net.URLDecoder.decode(pathSeen.get(),StandardCharsets.UTF_8)
+                    .contains("total_paid_by_customer_including_fees,payment_details"));
+            assertEquals(Map.of("method","credit_card"),
+                    response.data().getFirst().get("payment_details"));
+            assertFalse(response.toString().contains("PRIVATE@example.com"));
+            assertFalse(response.toString().contains("PRIVATE-CARD-BRAND"));
+            assertFalse(response.toString().contains("SENSITIVE-CARD-NUMBER"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
     @Test void orderValueHistoryUsesReadOnlyEndpointAndDropsPrivateFields()
             throws Exception {
         var pathSeen = new AtomicReference<String>();
