@@ -148,7 +148,7 @@ class OrderSnapshotDiagnosticServiceTest {
             assertEquals("INVALID_PAGINATION",assertThrows(NuvemshopException.class,
                     ()->service.inspect(bad[0],bad[1])).code());
         }
-        verify(shop,times(1)).paymentAuditOrders(anyInt(),anyInt());
+        verifyNoInteractions(shop,repository);
     }
 
     @Test void emptyPageWithNextIsRejectedAndNoFalseZeroInferred() {
