@@ -155,6 +155,61 @@ public class NuvemshopClient {
 
 
     /**
+     * Order VALUE history, not a Payment Transaction ledger or settlement proof.
+     * This merchant-order endpoint differs from /orders/{id}/transactions,
+     * which is reserved for Payment Apps. Never logs or exposes raw events.
+     */
+    public List<Map<String,Object>> orderValueHistory(long id) {
+        if (id <= 0) {
+            throw new NuvemshopException(HttpStatus.BAD_REQUEST, "INVALID_ORDER_ID",
+                    "Identificador de pedido invalido.");
+        }
+        var installation = repository.installation().orElseThrow(() ->
+                new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE, "NUVEMSHOP_NOT_CONNECTED",
+                        "Conecte a loja Nuvemshop antes da consulta."));
+        String path = "/" + settings.apiVersion() + "/" + installation.storeId()
+                + "/orders/" + id + "/history/values";
+        URI uri = URI.create(settings.apiBase() + path);
+        try {
+            var result = client.get().uri(uri)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + crypto.decrypt(installation.tokenEncrypted()))
+                    .header(HttpHeaders.USER_AGENT, settings.userAgent())
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<List<Map<String,Object>>>() {});
+            if (result == null) {
+                throw new NuvemshopException(HttpStatus.BAD_GATEWAY, "ORDER_VALUE_HISTORY_EMPTY_RESPONSE",
+                        "A Nuvemshop nao retornou uma lista de historico.");
+            }
+            if (result.size() > 100) {
+                throw new NuvemshopException(HttpStatus.BAD_GATEWAY, "ORDER_VALUE_HISTORY_TOO_LARGE",
+                        "Historico individual excedeu o limite de diagnostico.");
+            }
+            var allowed = List.of("status","total_paid_diff");
+            var safe = new ArrayList<Map<String,Object>>();
+            for (Map<String,Object> entry : result) {
+                if (entry == null) {
+                    throw new NuvemshopException(HttpStatus.BAD_GATEWAY, "ORDER_VALUE_HISTORY_INVALID",
+                            "Historico individual invalido.");
+                }
+                safe.add(sanitize(entry,allowed,"",List.of()));
+            }
+            return List.copyOf(safe);
+        } catch (RestClientResponseException e) {
+            int upstream = e.getStatusCode().value();
+            String code = upstream == 429 ? "NUVEMSHOP_RATE_LIMIT"
+                    : upstream == 401 || upstream == 403 ? "ORDER_VALUE_HISTORY_DENIED"
+                    : upstream == 404 ? "ORDER_VALUE_HISTORY_NOT_FOUND"
+                    : "ORDER_VALUE_HISTORY_UPSTREAM_ERROR";
+            throw new NuvemshopException(upstream == 429 ? HttpStatus.SERVICE_UNAVAILABLE
+                    : HttpStatus.BAD_GATEWAY, code,
+                    "Falha ao consultar historico de valores da Nuvemshop.",upstream);
+        } catch (RestClientException e) {
+            throw new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "NUVEMSHOP_UNAVAILABLE", "A Nuvemshop esta indisponivel.");
+        }
+    }
+
+    /**
      * Temporary diagnostic: fetch the upstream order JSON without the fields
      * filter or with a minimal field filter. The caller MUST whitelist the
      * response before logging or returning it: full responses may contain PII.
