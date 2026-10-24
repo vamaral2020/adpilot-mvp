@@ -307,4 +307,91 @@ class StoneNuvemCorrelationServiceTest {
         assertTrue(result.investigation().mismatchedGrossComponentAvailability().isEmpty());
     }
 
+    @Test void expanded404FallsBackToPreviousProjectionWithoutManufacturingComponents() {
+        fixtures(List.of(shopRow("9001","158","paid","95.00","credit_card")),
+                List.of(order("or_aaa111","158","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","CREDIT_CARD")));
+        doThrow(new br.com.adpilot.integrations.nuvemshop.NuvemshopException(
+                org.springframework.http.HttpStatus.BAD_GATEWAY,
+                "NUVEMSHOP_UPSTREAM_ERROR","sanitized upstream",404))
+                .when(shop).orderCrossProviderCandidates(1,50);
+        when(shop.orderCrossProviderCandidatesBaseline(1,50)).thenReturn(
+                new NuvemshopPage(
+                        List.of(shopRow("9001","158","paid","95.00","credit_card")),
+                        1,50,1L,false));
+        var report=service.inspect(50,10);
+        assertEquals("BASELINE_AFTER_EXPANDED_404",report.investigation().nuvemshopReadMode());
+        assertEquals(1,report.uniqueOneToOneCandidates());
+        assertEquals(1,report.amountsDifferent());
+        assertTrue(report.investigation().mismatchedGrossComponentAvailability().isEmpty());
+        assertEquals(0,report.investigation().grossMismatchesWhereDifferenceEqualsDiscount());
+        assertTrue(report.warnings().contains(
+                "NUVEMSHOP_EXPANDED_ORDER_FIELDS_RETURNED_404_BASELINE_SUCCEEDED"));
+        assertTrue(report.warnings().contains(
+                "NUVEMSHOP_FINANCIAL_COMPONENTS_NOT_REQUESTED_AFTER_FALLBACK"));
+        assertFalse(report.financiallyVerified());
+        assertFalse(report.paymentSettlementVerified());
+        verify(shop).orderCrossProviderCandidatesBaseline(1,50);
+        verify(shop,never()).orderCrossProviderCandidates(2,50);
+    }
+
+    @Test void fallbackPageTwoKeepsOriginalProjectionAcrossEntireRun() {
+        when(shop.orderCrossProviderCandidates(1,50)).thenThrow(
+                new br.com.adpilot.integrations.nuvemshop.NuvemshopException(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY,
+                        "NUVEMSHOP_UPSTREAM_ERROR","sanitized upstream",404));
+        when(shop.orderCrossProviderCandidatesBaseline(1,50)).thenReturn(
+                new NuvemshopPage(
+                        List.of(shopRow("9001","158","paid","95.00","credit_card")),
+                        1,50,2L,true));
+        when(shop.orderCrossProviderCandidatesBaseline(2,50)).thenReturn(
+                new NuvemshopPage(
+                        List.of(shopRow("9002","159","paid","100.00","pix")),
+                        2,50,2L,false));
+        when(stone.correlationOrders(1,50)).thenReturn(
+                new StoneHistoryClient.Page<>(List.of(
+                        order("or_aaa111","158","PAID",9500),
+                        order("or_bbb222","159","PAID",10000)),2L,false,true));
+        when(stone.charges(1,50)).thenReturn(
+                new StoneHistoryClient.Page<>(List.of(
+                        charge("ch_aaa111","or_aaa111","PAID","CREDIT_CARD"),
+                        charge("ch_bbb222","or_bbb222","PAID","PIX")),2L,false,true));
+        var report=service.inspect(50,10);
+        assertEquals(2,report.uniqueOneToOneCandidates());
+        assertTrue(report.nuvemshopOrders().paginationReconciled());
+        assertEquals("BASELINE_AFTER_EXPANDED_404",report.investigation().nuvemshopReadMode());
+        verify(shop,never()).orderCrossProviderCandidates(2,50);
+        verify(shop).orderCrossProviderCandidatesBaseline(2,50);
+    }
+
+    @Test void unrelatedHttpErrorsNeverTriggerFallback() {
+        for(int code:new int[]{400,401,403,429,500}) {
+            reset(shop);
+            when(shop.orderCrossProviderCandidates(1,50)).thenThrow(
+                    new br.com.adpilot.integrations.nuvemshop.NuvemshopException(
+                            org.springframework.http.HttpStatus.BAD_GATEWAY,
+                            "NUVEMSHOP_UPSTREAM_ERROR","upstream",code));
+            var error=assertThrows(br.com.adpilot.integrations.nuvemshop.NuvemshopException.class,
+                    ()->service.inspect(50,10));
+            assertEquals(code,error.upstreamStatus());
+            verify(shop,never()).orderCrossProviderCandidatesBaseline(anyInt(),anyInt());
+            verifyNoInteractions(stone);
+        }
+    }
+
+    @Test void double404IsReportedAsFailureRatherThanSilentlyEmptyReport() {
+        when(shop.orderCrossProviderCandidates(1,50)).thenThrow(
+                new br.com.adpilot.integrations.nuvemshop.NuvemshopException(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY,"NUVEMSHOP_UPSTREAM_ERROR",
+                        "expanded projection failed",404));
+        when(shop.orderCrossProviderCandidatesBaseline(1,50)).thenThrow(
+                new br.com.adpilot.integrations.nuvemshop.NuvemshopException(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY,"NUVEMSHOP_UPSTREAM_ERROR",
+                        "baseline projection failed",404));
+        var error=assertThrows(br.com.adpilot.integrations.nuvemshop.NuvemshopException.class,
+                ()->service.inspect(50,10));
+        assertEquals(404,error.upstreamStatus());
+        verifyNoInteractions(stone);
+    }
+
 }
