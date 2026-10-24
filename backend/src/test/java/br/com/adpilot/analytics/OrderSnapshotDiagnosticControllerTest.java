@@ -34,7 +34,7 @@ class OrderSnapshotDiagnosticControllerTest {
         when(auth.status()).thenReturn(new NuvemshopAuthService.Status(
                 "CONNECTED",true,"private-store-id",null,null));
         var report = new OrderSnapshotDiagnosticService.Report(false,false,false,
-                1,1,1,null,0,1,0,1,0,1,0,0,0,0,0,
+                1,1,1,null,0,1,0,1,0,1,0,0,0,0,
                 List.of("UPSTREAM_PAGINATION_NOT_RECONCILED"));
         when(service.inspect(100,5)).thenReturn(report);
         var controller=new OrderSnapshotDiagnosticController(service,auth,true);
