@@ -28,6 +28,18 @@ public class OrderPaymentSignalsService {
         this.client = client;
     }
 
+    /** Safe diagnostic buckets. Raw gateway identifiers are never serialized. */
+    public record UnknownGatewayEvidence(String gatewayField, String gatewayNameField,
+            String brandHint, int orders, int eligiblePaidOrders) {}
+
+    private static final class EvidenceAccumulator {
+        int orders, eligible;
+        void add(boolean isEligible) {
+            orders++;
+            if (isEligible) eligible++;
+        }
+    }
+
     public record Group(String provider, String paymentMethod, String currency,
             int eligiblePaidOrders, int ordersWithGrossTotal,
             BigDecimal grossOrderTotal, int ordersWithReportedBuyerPaid,
@@ -49,6 +61,7 @@ public class OrderPaymentSignalsService {
             int eligibleOrdersWithReportedBuyerPaid,
             int eligibleOrdersWithGrossAndBuyerPaidComparable,
             List<Group> eligiblePaidByProviderMethodCurrency,
+            List<UnknownGatewayEvidence> unknownGatewayEvidence,
             List<String> warnings) {}
 
     private static final class Totals {
@@ -80,6 +93,7 @@ public class OrderPaymentSignalsService {
 
         var seen = new HashSet<String>();
         var totals = new TreeMap<String,Totals>();
+        var unknownEvidence = new TreeMap<String,EvidenceAccumulator>();
         Long expected = null;
         boolean present = true, stable = true, exhausted = false;
         int pages = 0, fetched = 0, duplicates = 0;
@@ -118,6 +132,15 @@ public class OrderPaymentSignalsService {
                 if ("MISSING".equals(provider)) missingGateway++;
                 if ("UNRECOGNIZED".equals(provider)) unrecognizedGateway++;
                 if ("AMBIGUOUS".equals(provider)) ambiguousGateway++;
+                if ("UNRECOGNIZED".equals(provider) || "AMBIGUOUS".equals(provider)) {
+                    String evidenceKey = presence(row.get("gateway")) + "|"
+                            + presence(row.get("gateway_name")) + "|"
+                            + brandHint(row.get("gateway"), row.get("gateway_name"));
+                    boolean paidEligible = "paid".equals(payment)
+                            && ("open".equals(state) || "closed".equals(state));
+                    unknownEvidence.computeIfAbsent(evidenceKey,k->new EvidenceAccumulator())
+                            .add(paidEligible);
+                }
                 if ("MISSING".equals(method)) missingMethod++;
                 BigDecimal paid = money(row.get("total_paid_by_customer"));
                 BigDecimal includingFees = money(row.get("total_paid_by_customer_including_fees"));
@@ -151,6 +174,12 @@ public class OrderPaymentSignalsService {
                     t.grossCount,t.gross,t.paidCount,t.paid,t.inclCount,t.including,
                     t.comparable,t.less,t.greater));
         }
+        var evidence = new ArrayList<UnknownGatewayEvidence>();
+        for (var e : unknownEvidence.entrySet()) {
+            String[] parts = e.getKey().split("\\|",3);
+            evidence.add(new UnknownGatewayEvidence(parts[0],parts[1],parts[2],
+                    e.getValue().orders,e.getValue().eligible));
+        }
         var warnings=new ArrayList<String>();
         warnings.add("BUYER_REPORTED_AMOUNTS_NOT_PROVIDER_SETTLEMENT");
         warnings.add("GATEWAY_IS_ORDER_LEVEL_HINT_NOT_PROVEN_TRANSACTION_PROCESSOR");
@@ -169,7 +198,29 @@ public class OrderPaymentSignalsService {
                 present&&stable ? expected : null,duplicates,eligible,cancelled,refunds,
                 missingGateway,unrecognizedGateway,ambiguousGateway,missingMethod,
                 missingPaid,missingWithFees,invalidMoney,eligibleWithBuyerPaid,
-                eligibleComparable,List.copyOf(groups),List.copyOf(warnings));
+                eligibleComparable,List.copyOf(groups),List.copyOf(evidence),
+                List.copyOf(warnings));
+    }
+
+    private static String presence(Object raw) {
+        return raw == null ? "ABSENT_OR_NULL" : "PRESENT";
+    }
+
+    /** Vocabulary-only hints for unknown labels; never expose arbitrary strings. */
+    private static String brandHint(Object gateway, Object name) {
+        String a = hint(gateway), b = hint(name);
+        if (!a.isEmpty() && !b.isEmpty() && !a.equals(b)) return "MULTIPLE_BRAND_TEXTS";
+        return !a.isEmpty() ? a : !b.isEmpty() ? b : "NO_RECOGNIZED_BRAND_TEXT";
+    }
+
+    private static String hint(Object raw) {
+        if (!(raw instanceof String value) || value.length()>120) return "";
+        String text = value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]","");
+        if (text.contains("stone")) return "STONE_TEXT";
+        if (text.contains("pagarme")) return "PAGARME_TEXT";
+        if (text.contains("mercadopago")) return "MERCADO_PAGO_TEXT";
+        if (text.contains("nuvempago")) return "NUVEM_PAGO_TEXT";
+        return "";
     }
 
     private static String safeState(Object raw) {
