@@ -41,6 +41,9 @@ adpilot:
     token-url: ${NUVEMSHOP_TOKEN_URL:https://www.tiendanube.com/apps/authorize/token}
     dashboard-url: ${NUVEMSHOP_DASHBOARD_URL:http://localhost:13000/}
     payment-diagnostics-enabled: ${ADPILOT_NUVEMSHOP_DIAGNOSTICS_ENABLED:false}
+  stone:
+    secret-key: ${PAGARME_SECRET_KEY:}
+    diagnostics-enabled: ${ADPILOT_STONE_DIAGNOSTICS_ENABLED:false}
   analytics:
     sync-enabled: ${ADPILOT_ANALYTICS_SYNC_ENABLED:false}
     sync-cron: ${ADPILOT_ANALYTICS_SYNC_CRON:0 5 */3 * * *}
