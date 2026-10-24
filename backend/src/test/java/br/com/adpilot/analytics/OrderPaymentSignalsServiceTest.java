@@ -151,4 +151,46 @@ class OrderPaymentSignalsServiceTest {
         assertEquals(1,report.duplicateOrderIds());
         assertEquals(1,report.uniqueOrderIds());
     }
+    @Test void separatesStonePspGatewayAndBareBrandWithoutAssumingAcquirer() {
+        when(client.orderPaymentSignals(1,100)).thenReturn(page(1,5L,false,
+            order(1,"open","paid","Stone PSP","stone","credit_card","100.00",null,null,"BRL"),
+            order(2,"open","paid","stone_gateway",null,"credit_card","200.00",null,null,"BRL"),
+            order(3,"open","paid","Stone",null,"pix","20.00",null,null,"BRL"),
+            order(4,"open","paid","pagar.me",null,"credit_card","30.00",null,null,"BRL"),
+            order(5,"open","paid","stone psp","Stone Gateway","pix","40.00",null,null,"BRL")
+        ));
+        var report=service.inspect(100,20);
+        var byProvider=report.eligiblePaidByProviderMethodCurrency();
+        assertEquals(5,report.upstreamEligiblePaidOrders());
+        assertEquals(1,report.ambiguousProviderOrders());
+        assertEquals(1,byProvider.stream().filter(g->g.provider().equals("STONE_PSP")).count());
+        assertEquals(1,byProvider.stream().filter(g->g.provider().equals("STONE_GATEWAY")).count());
+        assertEquals(1,byProvider.stream().filter(g->g.provider().equals("STONE_UNSPECIFIED")).count());
+        assertEquals(1,byProvider.stream().filter(g->g.provider().equals("PAGARME")).count());
+        assertEquals(1,byProvider.stream().filter(g->g.provider().equals("AMBIGUOUS")).count());
+        assertFalse(report.financiallyVerified());
+        assertFalse(report.paymentSettlementVerified());
+    }
+
+    @Test void unknownGatewayEvidenceIsVocabularyOnlyNeverRaw() {
+        when(client.orderPaymentSignals(1,100)).thenReturn(page(1,3L,false,
+            order(11,"open","paid","my-stone-customer-123",null,"credit_card","100.00",null,null,"BRL"),
+            order(12,"open","paid","private-shop@example.com","other-private-id","credit_card","20.00",null,null,"BRL"),
+            order(13,"cancelled","pending","notstone",null,"pix","30.00",null,null,"BRL")
+        ));
+        var report=service.inspect(100,20);
+        assertEquals(3,report.unrecognizedProviderOrders());
+        assertEquals(3,report.unknownGatewayEvidence().stream()
+                .mapToInt(x->x.orders()).sum());
+        assertEquals(2,report.unknownGatewayEvidence().stream()
+                .mapToInt(x->x.eligiblePaidOrders()).sum());
+        assertTrue(report.unknownGatewayEvidence().stream().anyMatch(x->
+                x.brandHint().equals("STONE_TEXT")));
+        String serialized=report.toString();
+        assertFalse(serialized.contains("private-shop"));
+        assertFalse(serialized.contains("my-stone-customer"));
+        assertFalse(serialized.contains("notstone"));
+        assertFalse(serialized.contains("other-private-id"));
+    }
+
 }

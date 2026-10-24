@@ -261,6 +261,78 @@ class NuvemshopIntegrationTest {
         }
     }
 
+    @Test void paymentSignalDetailKeepsPresenceAndDropsBuyerPrivateData()
+            throws Exception {
+        var seenUri=new AtomicReference<String>();
+        var server=HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(),0),0);
+        server.createContext("/",exchange->{
+            assertEquals("GET",exchange.getRequestMethod());
+            assertEquals("Bearer test-bearer",
+                    exchange.getRequestHeaders().getFirst("Authorization"));
+            seenUri.set(exchange.getRequestURI().toString());
+            byte[] body="""
+                    {"id":42,"status":"open","payment_status":"paid",
+                     "total":"45.00","currency":"BRL",
+                     "gateway":"stone","gateway_name":"Stone PSP",
+                     "total_paid_by_customer":"45.00",
+                     "total_paid_by_customer_including_fees":"46.00",
+                     "customer":{"email":"private@example.com"},
+                     "payment_details":{"method":"credit_card",
+                                        "card_number":"SENSITIVE-CARD-NUMBER"}}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type","application/json");
+            exchange.sendResponseHeaders(200,body.length);
+            try(var out=exchange.getResponseBody()) {out.write(body);}
+        });
+        server.start();
+        try {
+            var repo=mock(NuvemshopRepository.class);
+            var props=settings("http://127.0.0.1:"+server.getAddress().getPort(),
+                    "https://www.nuvemshop.com.br");
+            var crypto=new NuvemshopCrypto(props);
+            when(repo.installation()).thenReturn(Optional.of(
+                    new NuvemshopRepository.Installation("789","read_orders",
+                            crypto.encrypt("test-bearer"),java.time.Instant.now())));
+            var client=new NuvemshopClient(props,repo,crypto,RestClient.builder());
+            var detail=client.orderPaymentSignalDetails(42);
+            assertTrue(java.net.URLDecoder.decode(seenUri.get(),StandardCharsets.UTF_8)
+                    .contains("total_paid_by_customer_including_fees,payment_details"));
+            assertEquals("45.00",detail.get("total_paid_by_customer"));
+            assertEquals(Map.of("method","credit_card"),detail.get("payment_details"));
+            assertFalse(detail.toString().contains("private@example.com"));
+            assertFalse(detail.toString().contains("SENSITIVE-CARD-NUMBER"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test void paymentSignalDetail404IsNotTreatedAsMissingPayment()
+            throws Exception {
+        var server=HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(),0),0);
+        server.createContext("/",exchange->{
+            byte[] body="not found".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(404,body.length);
+            try(var out=exchange.getResponseBody()) {out.write(body);}
+        });
+        server.start();
+        try {
+            var repo=mock(NuvemshopRepository.class);
+            var props=settings("http://127.0.0.1:"+server.getAddress().getPort(),
+                    "https://www.nuvemshop.com.br");
+            var crypto=new NuvemshopCrypto(props);
+            when(repo.installation()).thenReturn(Optional.of(
+                    new NuvemshopRepository.Installation("789","read_orders",
+                            crypto.encrypt("test-bearer"),java.time.Instant.now())));
+            var client=new NuvemshopClient(props,repo,crypto,RestClient.builder());
+            var error=assertThrows(NuvemshopException.class,
+                    ()->client.orderPaymentSignalDetails(42));
+            assertEquals("ORDER_PAYMENT_DETAIL_NOT_FOUND",error.code());
+            assertEquals(404,error.upstreamStatus());
+        } finally {
+            server.stop(0);
+        }
+    }
+
     @Test void orderPaymentSignalsProjectsNestedMethodWithoutBuyerPrivateFields()
             throws Exception {
         var pathSeen = new AtomicReference<String>();

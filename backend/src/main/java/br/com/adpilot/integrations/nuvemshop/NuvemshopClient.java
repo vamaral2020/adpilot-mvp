@@ -172,6 +172,46 @@ public class NuvemshopClient {
 
 
     /**
+     * Read-only diagnostic: compare field presence in an individual Order detail
+     * against the List projection. No order body is logged; only allowlisted
+     * fields and payment_details.method cross the client boundary.
+     */
+    public Map<String,Object> orderPaymentSignalDetails(long id) {
+        if (id <= 0)
+            throw new NuvemshopException(HttpStatus.BAD_REQUEST, "INVALID_ORDER_ID",
+                    "Identificador de pedido invalido.");
+        var installation = repository.installation().orElseThrow(() ->
+                new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE, "NUVEMSHOP_NOT_CONNECTED",
+                        "Conecte a loja Nuvemshop antes de consultar pedidos."));
+        String path = "/" + settings.apiVersion() + "/" + installation.storeId() + "/orders/" + id;
+        URI uri = URI.create(settings.apiBase() + path + "?fields="
+                + URLEncoder.encode(ORDER_PAYMENT_SIGNALS_FIELDS, StandardCharsets.UTF_8));
+        try {
+            var result = client.get().uri(uri)
+                    .header(HttpHeaders.AUTHORIZATION,
+                            "Bearer " + crypto.decrypt(installation.tokenEncrypted()))
+                    .header(HttpHeaders.USER_AGENT, settings.userAgent())
+                    .retrieve().body(new ParameterizedTypeReference<Map<String,Object>>() {});
+            if (result == null)
+                throw new NuvemshopException(HttpStatus.BAD_GATEWAY,
+                        "ORDER_PAYMENT_DETAIL_EMPTY", "Detalhe de pedido vazio.");
+            return sanitize(result, ORDER_PAYMENT_SIGNALS_PROJECTION,
+                    "payment_details", PAYMENT_METHOD_PROJECTION);
+        } catch (RestClientResponseException e) {
+            int upstream=e.getStatusCode().value();
+            String code=upstream==429 ? "NUVEMSHOP_RATE_LIMIT"
+                    : upstream==401 || upstream==403 ? "ORDER_PAYMENT_DETAIL_DENIED"
+                    : upstream==404 ? "ORDER_PAYMENT_DETAIL_NOT_FOUND"
+                    : "ORDER_PAYMENT_DETAIL_ERROR";
+            throw new NuvemshopException(upstream==429 ? HttpStatus.SERVICE_UNAVAILABLE
+                    : HttpStatus.BAD_GATEWAY, code, "Falha ao consultar detalhe de pedido.",upstream);
+        } catch (RestClientException e) {
+            throw new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE,"NUVEMSHOP_UNAVAILABLE",
+                    "A Nuvemshop esta indisponivel.");
+        }
+    }
+
+    /**
      * Order VALUE history, not a Payment Transaction ledger or settlement proof.
      * This merchant-order endpoint differs from /orders/{id}/transactions,
      * which is reserved for Payment Apps. Never logs or exposes raw events.
