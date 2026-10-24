@@ -200,9 +200,19 @@ public class StoneNuvemCorrelationService {
         int timesCompared=0,timesNear=0,timesFar=0;
         int methodsCompared=0,methodsEqual=0,methodsDifferent=0;
         int noCharge=0,multipleCharges=0;
+        int differencesAlsoStatus=0,differencesAlsoMethod=0,differencesWithOtherGateway=0;
+        var differenceBands=new java.util.TreeMap<String,Integer>();
+        var providerDateStates=new java.util.TreeMap<String,Integer>();
+        var shopDateStates=new java.util.TreeMap<String,Integer>();
+        var gatewayHints=new java.util.TreeMap<String,Integer>();
+        int duplicateTargetGroups=(int)shopUsage.values().stream().filter(v->v>1).count();
         for(var c:candidates) {
             if(shopUsage.get(c.shop().id())!=1) {collision++;continue;}
             unique++;
+            providerDateStates.merge(c.provider().createdAtFieldStatus(),1,Integer::sum);
+            shopDateStates.merge(c.shop().createdAtFieldStatus(),1,Integer::sum);
+            gatewayHints.merge(c.shop().gatewayHint(),1,Integer::sum);
+            boolean amountMismatch=false,paidStateMismatch=false,methodMismatch=false;
             if(c.byId() && c.byNumber()) viaBoth++;
             else if(c.byId()) viaId++;
             else viaNumber++;
@@ -213,14 +223,19 @@ public class StoneNuvemCorrelationService {
             else {
                 moneyCompared++;
                 if(c.provider().amountCents().equals(c.shop().cents())) moneyEqual++;
-                else moneyDifferent++;
+                else {
+                    moneyDifferent++;
+                    amountMismatch=true;
+                    differenceBands.merge(differenceCategory(c.provider().amountCents(),
+                            c.shop().cents()),1,Integer::sum);
+                }
             }
             if(!"UNKNOWN".equals(c.provider().status())
                     && !"UNKNOWN".equals(c.shop().paymentStatus())) {
                 stateCompared++;
                 if(("PAID".equals(c.provider().status()))
                         ==("PAID".equals(c.shop().paymentStatus()))) stateAligned++;
-                else stateDifferent++;
+                else {stateDifferent++;paidStateMismatch=true;}
             }
             if(c.shop().createdAt()!=null && c.provider().createdAt()!=null) {
                 timesCompared++;
@@ -238,8 +253,15 @@ public class StoneNuvemCorrelationService {
                         && !"UNKNOWN".equals(c.shop().paymentMethod())) {
                     methodsCompared++;
                     if(fromProvider.equals(c.shop().paymentMethod())) methodsEqual++;
-                    else methodsDifferent++;
+                    else {methodsDifferent++;methodMismatch=true;}
                 }
+            }
+            if(amountMismatch) {
+                if(paidStateMismatch) differencesAlsoStatus++;
+                if(methodMismatch) differencesAlsoMethod++;
+                if("OTHER_REPORTED".equals(c.shop().gatewayHint())
+                        || "CONFLICTING_LABELS".equals(c.shop().gatewayHint()))
+                    differencesWithOtherGateway++;
             }
         }
 
@@ -259,6 +281,23 @@ public class StoneNuvemCorrelationService {
         if(stateDifferent>0) warnings.add("PAID_STATUS_DISAGREEMENT_ON_CANDIDATES");
         if(timesFar>0) warnings.add("CREATION_TIME_OVER_48_HOURS_ON_CANDIDATES");
         if(methodsDifferent>0) warnings.add("PAYMENT_METHOD_DISAGREEMENT_ON_CANDIDATES");
+        if(providerDateStates.getOrDefault("ABSENT_OR_NULL",0)>0
+                || providerDateStates.getOrDefault("UNPARSEABLE",0)>0
+                || shopDateStates.getOrDefault("ABSENT_OR_NULL",0)>0
+                || shopDateStates.getOrDefault("UNPARSEABLE",0)>0)
+            warnings.add("ORDER_CREATION_TIMESTAMPS_INCOMPLETE_OR_UNPARSEABLE");
+        if(gatewayHints.getOrDefault("OTHER_REPORTED",0)>0
+                || gatewayHints.getOrDefault("CONFLICTING_LABELS",0)>0)
+            warnings.add("CANDIDATE_NUVEMSHOP_GATEWAY_MAY_DIFFER_FROM_STONE");
+
+        var audit=new AuditBreakdown(Map.copyOf(unsupportedFormats),duplicateTargetGroups,
+                Map.copyOf(differenceBands),differencesAlsoStatus,differencesAlsoMethod,
+                differencesWithOtherGateway,Map.copyOf(providerDateStates),
+                Map.copyOf(shopDateStates),Map.copyOf(gatewayHints),
+                List.of("AMOUNT_IS_GROSS_ORDER_FIELD_NOT_SETTLEMENT",
+                        "GATEWAY_IS_ORDER_HINT_NOT_PAYMENT_PROCESSOR_PROOF",
+                        "NUMERIC_CODE_IS_UNVERIFIED_LINK_EVIDENCE",
+                        "TIMESTAMPS_ARE_NOT_ATOMIC_ACROSS_SYSTEMS"));
 
         return new Report("PAGARME_CORE_V5_NUVEMSHOP",
                 stone.keyEnvironment(),providerAcc.report(),chargeAcc.report(),
@@ -267,7 +306,7 @@ public class StoneNuvemCorrelationService {
                 moneyUnknown,stateCompared,stateAligned,stateDifferent,
                 timesCompared,timesNear,timesFar,
                 methodsCompared,methodsEqual,methodsDifferent,noCharge,multipleCharges,
-                false,false,false,false,List.copyOf(warnings));
+                false,false,false,false,List.copyOf(warnings),audit);
     }
 
     private static String digits(Object input) {
