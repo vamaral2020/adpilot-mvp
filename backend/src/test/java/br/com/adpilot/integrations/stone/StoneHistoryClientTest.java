@@ -215,4 +215,100 @@ class StoneHistoryClientTest {
         } finally {absent.stop(0);}
     }
 
+    @Test void chargeDetailFetchesOnlyByValidatedIdentifierAndProjectsMoneyWithoutPii()
+            throws Exception {
+        var observed=new AtomicReference<String>();
+        var server=serve(200,"{}", """
+                {"id":"ch_abc12345","order_id":"or_abc12345",
+                 "status":"paid","currency":"BRL","amount":10000,
+                 "paid_amount":9500,"refunded_amount":0,
+                 "customer":{"email":"PRIVATE@example.com"},
+                 "last_transaction":{"card":{"number":"PRIVATE-CARD-NUMBER"}},
+                 "split":[{"recipient_id":"SECRET-RECIPIENT"}]}
+                """,observed);
+        try {
+            var detail=client(server).chargeFinancialDetail("ch_abc12345");
+            assertEquals("ch_abc12345",detail.id());
+            assertEquals("or_abc12345",detail.providerOrderId());
+            assertEquals("PAID",detail.status());
+            assertEquals("BRL",detail.currency());
+            assertEquals(10000L,detail.amountCents());
+            assertEquals(9500L,detail.paidAmountCents());
+            assertEquals(0L,detail.refundedAmountCents());
+            assertTrue(observed.get().startsWith(
+                    "GET|/core/v5/charges/ch_abc12345|Basic "));
+            String projected=detail.toString();
+            assertFalse(projected.contains("PRIVATE@example.com"));
+            assertFalse(projected.contains("PRIVATE-CARD-NUMBER"));
+            assertFalse(projected.contains("SECRET-RECIPIENT"));
+        } finally {server.stop(0);}
+    }
+
+    @Test void missingOrMalformedChargeAmountsDoNotTurnIntoZero() throws Exception {
+        var observed=new AtomicReference<String>();
+        var server=serve(200,"{}", """
+                {"id":"ch_abc12345","order_id":"or_abc12345",
+                 "status":"partial_refunded","currency":"BRL",
+                 "amount":"10000","paid_amount":null,"refunded_amount":-1}
+                """,observed);
+        try {
+            var detail=client(server).chargeFinancialDetail("ch_abc12345");
+            assertEquals("PARTIAL_REFUNDED",detail.status());
+            assertNull(detail.amountCents());
+            assertNull(detail.paidAmountCents());
+            assertNull(detail.refundedAmountCents());
+        } finally {server.stop(0);}
+    }
+
+    @Test void chargeDetailsAreFailClosedOnWrongIdUnlinkedOrderAndBadReferences()
+            throws Exception {
+        var observed=new AtomicReference<String>();
+        var invalid=serve(200,"{}", """
+                {"id":"ch_different99","order_id":"or_abc12345","status":"paid"}
+                """,observed);
+        try {
+            var err=assertThrows(StoneChargeException.class,
+                    ()->client(invalid).chargeFinancialDetail("ch_abc12345"));
+            assertEquals("STONE_INVALID_COLLECTION_RESPONSE",err.code());
+        } finally {invalid.stop(0);}
+
+        var noParent=serve(200,"{}", """
+                {"id":"ch_abc12345","status":"paid","currency":"BRL",
+                 "paid_amount":10000}
+                """,observed);
+        try {
+            assertEquals("STONE_INVALID_COLLECTION_RESPONSE",
+                    assertThrows(StoneChargeException.class,()->
+                            client(noParent).chargeFinancialDetail("ch_abc12345")).code());
+        } finally {noParent.stop(0);}
+
+        var client=new StoneHistoryClient(SECRET,RestClient.builder(),
+                URI.create("http://127.0.0.1:1/core/v5"));
+        for(String unsafe:new String[]{"ch_../charges","https://example.com",
+                "or_abc12345","ch_","ch_abc12345?expand=customer"}) {
+            assertEquals("STONE_INVALID_CHARGE_REFERENCE",
+                    assertThrows(StoneChargeException.class,
+                            ()->client.chargeFinancialDetail(unsafe)).code());
+        }
+    }
+
+    @Test void chargeDetailUpstreamErrorsDoNotLeakBodyOrKey() throws Exception {
+        for(int status:new int[]{401,403,404,429,500,302}) {
+            var seen=new AtomicReference<String>();
+            var server=serve(status,"{}",
+                    "{\"error\":\"PRIVATE@example.com "+SECRET+"\"}",seen);
+            try {
+                var e=assertThrows(StoneChargeException.class,()->
+                        client(server).chargeFinancialDetail("ch_abc12345"));
+                assertFalse(e.getMessage().contains("PRIVATE@example.com"));
+                assertFalse(e.getMessage().contains(SECRET));
+                assertEquals(status==302?"STONE_REDIRECT_REJECTED":
+                        status==404?"STONE_CHARGE_NOT_FOUND":
+                        status==429?"STONE_RATE_LIMIT":
+                        status==401||status==403?"STONE_CREDENTIALS_REJECTED":
+                        "STONE_UPSTREAM_ERROR",e.code());
+            } finally {server.stop(0);}
+        }
+    }
+
 }
