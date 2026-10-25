@@ -594,4 +594,133 @@ class StoneNuvemCorrelationServiceTest {
         verify(shop,never()).probeCorrelationListField(anyString());
     }
 
+    @Test void chargeAmountsCanAgreeWithDiscountedShopTotalsWithoutFinancialProof() {
+        var rows=new ArrayList<Map<String,Object>>();
+        var orders=new ArrayList<StoneHistoryClient.CrossReferenceOrder>();
+        var charges=new ArrayList<StoneHistoryClient.ProviderCharge>();
+        for(int n=0;n<5;n++) {
+            String code=Integer.toString(158+n);
+            String shopId=Integer.toString(9001+n);
+            var row=shopRow(shopId,code,"paid","95.00","pix");
+            row.put("gateway","stone");
+            row.put("subtotal","100.00");
+            row.put("discount","5.00");
+            rows.add(row);
+            String orderId="or_example"+n+"1234";
+            String chargeId="ch_example"+n+"1234";
+            orders.add(order(orderId,code,"PAID",10000));
+            charges.add(charge(chargeId,orderId,"PAID","PIX"));
+            when(stone.chargeFinancialDetail(chargeId)).thenReturn(
+                    new StoneHistoryClient.ChargeFinancialDetail(chargeId,orderId,
+                            "PAID","BRL",10000L,9500L,n==0?150L:0L));
+        }
+        fixtures(rows,orders,charges);
+        var result=service.inspect(50,10);
+        var ev=result.chargeEvidence();
+        assertEquals("COMPLETE",ev.status());
+        assertEquals(5,ev.targeted());
+        assertEquals(5,ev.singleChargeCandidates());
+        assertEquals(0,ev.missingOrMultipleCharges());
+        assertEquals(5,ev.attempted());
+        assertEquals(5,ev.comparable());
+        assertEquals(Map.of("PAID",5),ev.observedStatuses());
+        assertEquals(5,ev.chargeAmountObserved());
+        assertEquals(0,ev.chargeAmountMatchesNuvemshopTotal());
+        assertEquals(5,ev.chargeAmountMatchesPagarmeOrder());
+        assertEquals(5,ev.paidAmountObserved());
+        assertEquals(5,ev.paidAmountMatchesNuvemshopTotal());
+        assertEquals(0,ev.paidAmountMatchesPagarmeOrder());
+        assertEquals(0,ev.paidAmountDiffersFromNuvemshopTotal());
+        assertEquals(5,ev.refundAmountObserved());
+        assertEquals(1,ev.positiveRefundAmount());
+        assertEquals(5,result.amountsDifferent());
+        assertFalse(result.financiallyVerified());
+        assertFalse(result.paymentSettlementVerified());
+        assertFalse(result.ordersMatchedToNuvemshop());
+        assertFalse(result.ordersMatchedToCampaigns());
+        String safe=result.toString();
+        assertFalse(safe.contains("ch_example"));
+        assertFalse(safe.contains("or_example"));
+        assertFalse(safe.contains("9500"));
+        assertFalse(safe.contains("10000"));
+    }
+
+    @Test void chargePaidAmountMissingIsUnknownNotZeroAndRefundIsNotInferred() {
+        fixtures(List.of(shopRow("9001","158","paid","95.00","pix")),
+                List.of(order("or_aaa111","158","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","PIX")));
+        when(stone.chargeFinancialDetail("ch_aaa111")).thenReturn(
+                new StoneHistoryClient.ChargeFinancialDetail("ch_aaa111","or_aaa111",
+                        "PAID","BRL",10000L,null,null));
+        var e=service.inspect(50,10).chargeEvidence();
+        assertEquals(1,e.comparable());
+        assertEquals(1,e.chargeAmountMatchesPagarmeOrder());
+        assertEquals(0,e.paidAmountObserved());
+        assertEquals(0,e.paidAmountDiffersFromNuvemshopTotal());
+        assertEquals(0,e.refundAmountObserved());
+        assertEquals(0,e.positiveRefundAmount());
+    }
+
+    @Test void detailThatDoesNotMatchListedProviderOrderIsRejectedAsChanged() {
+        fixtures(List.of(shopRow("9001","158","paid","95.00","pix")),
+                List.of(order("or_aaa111","158","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","PIX")));
+        when(stone.chargeFinancialDetail("ch_aaa111")).thenReturn(
+                new StoneHistoryClient.ChargeFinancialDetail("ch_aaa111","or_different99",
+                        "PAID","BRL",10000L,9500L,null));
+        var result=service.inspect(50,10);
+        var e=result.chargeEvidence();
+        assertEquals("PARTIAL_CHANGED_OR_UNVERIFIABLE_CHARGE",e.status());
+        assertEquals(1,e.attempted());
+        assertEquals(0,e.comparable());
+        assertEquals(1,e.rejectedOrChanged());
+        assertTrue(result.warnings().contains("PAGARME_CHARGE_DETAIL_EVIDENCE_INCOMPLETE"));
+    }
+
+    @Test void multipleOrMissingChargeLinksAreNotTreatedAsCaptured() {
+        fixtures(List.of(shopRow("9001","158","paid","95.00","pix"),
+                shopRow("9002","159","paid","95.00","pix")),
+                List.of(order("or_aaa111","158","PAID",10000),
+                        order("or_bbb222","159","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","FAILED","CREDIT_CARD"),
+                        charge("ch_ddd444","or_aaa111","PAID","PIX")));
+        var result=service.inspect(50,10);
+        assertEquals(2,result.chargeEvidence().targeted());
+        assertEquals(2,result.chargeEvidence().missingOrMultipleCharges());
+        assertEquals(0,result.chargeEvidence().attempted());
+        verify(stone,never()).chargeFinancialDetail(anyString());
+        assertTrue(result.warnings().contains("PAGARME_CHARGE_LINK_MISSING_OR_AMBIGUOUS"));
+    }
+
+    @Test void chargeDetailProviderErrorStopsFurtherRequests() {
+        fixtures(List.of(shopRow("9001","158","paid","95.00","pix"),
+                shopRow("9002","159","paid","95.00","pix")),
+                List.of(order("or_aaa111","158","PAID",10000),
+                        order("or_bbb222","159","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","PIX"),
+                        charge("ch_bbb222","or_bbb222","PAID","PIX")));
+        when(stone.chargeFinancialDetail("ch_aaa111")).thenThrow(
+                new StoneChargeException(org.springframework.http.HttpStatus.BAD_GATEWAY,
+                        "STONE_CHARGE_NOT_FOUND","Consulta sanitizada.",404));
+        var result=service.inspect(50,10);
+        assertEquals("STOPPED_AFTER_PROVIDER_ERROR",result.chargeEvidence().status());
+        assertEquals(1,result.chargeEvidence().attempted());
+        assertEquals(1,result.chargeEvidence().unavailable());
+        verify(stone,never()).chargeFinancialDetail("ch_bbb222");
+    }
+
+    @Test void skippedChargeDetailsWhenSourcePaginationIsIncomplete() {
+        when(shop.orderCrossProviderCandidates(1,50)).thenReturn(
+                new NuvemshopPage(List.of(shopRow("9001","158","paid","95.00","pix")),
+                        1,50,2L,true));
+        when(stone.correlationOrders(1,50)).thenReturn(page(
+                order("or_aaa111","158","PAID",10000)));
+        when(stone.charges(1,50)).thenReturn(page(
+                charge("ch_aaa111","or_aaa111","PAID","PIX")));
+        var result=service.inspect(50,1);
+        assertEquals("SKIPPED_INCOMPLETE_PAGINATION",
+                result.chargeEvidence().status());
+        verify(stone,never()).chargeFinancialDetail(anyString());
+    }
+
 }

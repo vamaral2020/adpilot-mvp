@@ -35,7 +35,7 @@ public class StoneHistoryClient {
             "pending","paid","canceled","failed","closed");
     private static final Set<String> CHARGE_STATES=Set.of(
             "pending","paid","canceled","processing","failed",
-            "overpaid","underpaid","chargedback");
+            "overpaid","underpaid","chargedback","refunded","partial_refunded");
     private static final Set<String> METHODS=Set.of(
             "credit_card","debit_card","pix","boleto","voucher","bank_transfer");
 
@@ -74,6 +74,11 @@ public class StoneHistoryClient {
 
     public record ProviderCharge(String id,String providerOrderId,String status,
             String method,boolean amountPresent,boolean paidAmountPresent) {}
+
+    /** In-memory allowlist only. Never serialize this record in a controller. */
+    public record ChargeFinancialDetail(String id,String providerOrderId,
+            String status,String currency,Long amountCents,
+            Long paidAmountCents,Long refundedAmountCents) {}
     public record Page<T>(List<T> data,Long total,boolean hasNext,
             boolean pagingMetadataPresent) {}
 
@@ -149,6 +154,55 @@ public class StoneHistoryClient {
                     row.get("amount")!=null,row.get("paid_amount")!=null));
         }
         return page(response,records);
+    }
+
+    /**
+     * PR052: GET a single charge already observed in the bounded list.
+     * No card, transaction details, customer, balance or split data escape.
+     */
+    public ChargeFinancialDetail chargeFinancialDetail(String chargeId) {
+        if(chargeId==null || !chargeId.matches("ch_[A-Za-z0-9]{4,64}"))
+            throw new StoneChargeException(HttpStatus.BAD_REQUEST,
+                    "STONE_INVALID_CHARGE_REFERENCE","Referencia invalida.");
+        if(!configured())
+            throw new StoneChargeException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "STONE_NOT_CONFIGURED","Chave Stone nao configurada.");
+        URI uri=URI.create(base+"/charges/"+chargeId);
+        String auth=Base64.getEncoder().encodeToString(
+                (secretKey+":").getBytes(StandardCharsets.UTF_8));
+        Map<?,?> raw;
+        try {
+            raw=http.get().uri(uri)
+                    .header(HttpHeaders.AUTHORIZATION,"Basic "+auth)
+                    .header(HttpHeaders.ACCEPT,"application/json")
+                    .retrieve()
+                    .onStatus(status->status.is3xxRedirection(),(request,response)->{
+                        throw new StoneChargeException(HttpStatus.BAD_GATEWAY,
+                                "STONE_REDIRECT_REJECTED","Redirecionamento rejeitado.");
+                    }).body(Map.class);
+        } catch(RestClientResponseException ex) {
+            int upstream=ex.getStatusCode().value();
+            String code=upstream==401||upstream==403?"STONE_CREDENTIALS_REJECTED"
+                    :upstream==404?"STONE_CHARGE_NOT_FOUND"
+                    :upstream==429?"STONE_RATE_LIMIT":"STONE_UPSTREAM_ERROR";
+            throw new StoneChargeException(upstream==429?HttpStatus.SERVICE_UNAVAILABLE
+                    :HttpStatus.BAD_GATEWAY,code,"Consulta de cobranca indisponivel.",upstream);
+        } catch(RestClientException|IllegalArgumentException ex) {
+            throw new StoneChargeException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "STONE_UNAVAILABLE","Consulta de cobranca indisponivel.");
+        }
+        if(raw==null) throw invalid();
+        String id=identifier(raw.get("id"),"ch_");
+        if(!chargeId.equals(id)) throw invalid();
+        String orderId=optionalOrderId(raw);
+        // Require an unambiguous provider order link for this evidentiary probe.
+        if(orderId==null) throw invalid();
+        return new ChargeFinancialDetail(id,orderId,
+                safeEnum(raw.get("status"),CHARGE_STATES),
+                "BRL".equals(raw.get("currency"))?"BRL":"UNKNOWN",
+                amountCents(raw.get("amount")),
+                amountCents(raw.get("paid_amount")),
+                amountCents(raw.get("refunded_amount")));
     }
 
     private Map<?,?> fetch(String resource,int page,int size) {
