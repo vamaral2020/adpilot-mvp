@@ -53,7 +53,8 @@ public class StoneNuvemCorrelationService {
             boolean financiallyVerified,boolean paymentSettlementVerified,
             boolean ordersMatchedToNuvemshop,boolean ordersMatchedToCampaigns,
             List<String> warnings, AuditBreakdown audit,
-            InvestigationDiagnostics investigation, SupplementalDiagnostics supplemental) {}
+            InvestigationDiagnostics investigation, SupplementalDiagnostics supplemental,
+            ChargeEvidence chargeEvidence) {}
 
     /**
      * PR047: coarse, aggregate-only quality evidence. Never serialize raw
@@ -95,6 +96,18 @@ public class StoneNuvemCorrelationService {
 
     public record SupplementalDiagnostics(Map<String,String> independentListFieldProbes,
             DetailAggregate financialDetails,CandidateQuality candidateQuality,
+            List<String> cautions) {}
+
+    /** PR052: only aggregate charge field comparisons, not capture or settlement proof. */
+    public record ChargeEvidence(String status,int targeted,int singleChargeCandidates,
+            int missingOrMultipleCharges,int attempted,int comparable,
+            int rejectedOrChanged,int unavailable,
+            Map<String,Integer> observedStatuses,
+            int chargeAmountObserved,int chargeAmountMatchesNuvemshopTotal,
+            int chargeAmountMatchesPagarmeOrder,
+            int paidAmountObserved,int paidAmountMatchesNuvemshopTotal,
+            int paidAmountMatchesPagarmeOrder,int paidAmountDiffersFromNuvemshopTotal,
+            int refundAmountObserved,int positiveRefundAmount,
             List<String> cautions) {}
 
     private record ShopOrder(String id,String number,String paymentStatus,String currency,
@@ -419,8 +432,14 @@ public class StoneNuvemCorrelationService {
         var supplemental=collectSupplemental(baselineProjection,complete,
                 mismatchedCandidates,
                 new CandidateQuality(qualityAllAligned,qualityConflicted,qualityIncomplete));
+        var chargeEvidence=collectChargeEvidence(mismatchedCandidates,
+                chargesByOrder,complete);
         if(supplemental.financialDetails().unavailable()>0)
             warnings.add("NUVEMSHOP_FINANCIAL_DETAIL_READ_INCOMPLETE");
+        if(chargeEvidence.unavailable()>0 || chargeEvidence.rejectedOrChanged()>0)
+            warnings.add("PAGARME_CHARGE_DETAIL_EVIDENCE_INCOMPLETE");
+        if(chargeEvidence.missingOrMultipleCharges()>0)
+            warnings.add("PAGARME_CHARGE_LINK_MISSING_OR_AMBIGUOUS");
         if(baselineProjection)
             warnings.add("FINANCIAL_FIELD_PROBES_ARE_DIAGNOSTIC_NOT_API_COMPATIBILITY_PROOF");
 
@@ -442,7 +461,92 @@ public class StoneNuvemCorrelationService {
                 timesCompared,timesNear,timesFar,
                 methodsCompared,methodsEqual,methodsDifferent,noCharge,multipleCharges,
                 false,false,false,false,List.copyOf(warnings),audit,investigation,
-                supplemental);
+                supplemental,chargeEvidence);
+    }
+
+    private ChargeEvidence collectChargeEvidence(List<Candidate> mismatches,
+            Map<String,List<StoneHistoryClient.ProviderCharge>> chargesByOrder,
+            boolean pagingComplete) {
+        var cautions=List.of(
+                "PAID_AMOUNT_IS_PROVIDER_FIELD_NOT_BANK_PAYOUT",
+                "CHARGE_STATUS_IS_OBSERVATION_NOT_SETTLEMENT_PROOF",
+                "REFUND_AMOUNT_ABSENT_IS_UNKNOWN_NOT_ZERO",
+                "NO_FEES_RECEIVABLES_OR_DISPUTE_LEDGER_VERIFIED",
+                "MATCH_IS_EXPLORATORY_AND_NOT_AN_ORDER_LINK");
+        int targets=mismatches.size();
+        if(!pagingComplete)
+            return emptyChargeEvidence("SKIPPED_INCOMPLETE_PAGINATION",targets,cautions);
+        if(targets==0)
+            return emptyChargeEvidence("NO_GROSS_MISMATCHES",targets,cautions);
+        if(targets>5)
+            return emptyChargeEvidence("SKIPPED_MORE_THAN_FIVE_MISMATCHES",targets,cautions);
+
+        int single=0,skipped=0,attempted=0,compared=0,rejected=0,unavailable=0;
+        int amountAvailable=0,chargeShop=0,chargeOrder=0;
+        int paidAvailable=0,paidShop=0,paidOrder=0,paidDifferentShop=0;
+        int refundAvailable=0,positiveRefund=0;
+        var statuses=new java.util.TreeMap<String,Integer>();
+        String state="COMPLETE";
+        for(Candidate candidate:mismatches) {
+            var linked=chargesByOrder.getOrDefault(candidate.provider().id(),List.of());
+            if(linked.size()!=1) {
+                skipped++;
+                continue; // multiple charges cannot be reduced to one payment
+            }
+            single++;
+            StoneHistoryClient.ProviderCharge observed=linked.getFirst();
+            attempted++;
+            StoneHistoryClient.ChargeFinancialDetail detail;
+            try {
+                detail=stone.chargeFinancialDetail(observed.id());
+            } catch(StoneChargeException e) {
+                unavailable++;
+                state="STOPPED_AFTER_PROVIDER_ERROR";
+                // On 404/429/authorization failure, never retry all remaining charges.
+                break;
+            }
+            if(detail==null
+                    || !observed.id().equals(detail.id())
+                    || !candidate.provider().id().equals(detail.providerOrderId())
+                    || !observed.status().equals(detail.status())
+                    || !"BRL".equals(detail.currency())) {
+                rejected++;
+                state="PARTIAL_CHANGED_OR_UNVERIFIABLE_CHARGE";
+                continue;
+            }
+            compared++;
+            statuses.merge(detail.status(),1,Integer::sum);
+            Long chargeAmount=detail.amountCents();
+            Long paid=detail.paidAmountCents();
+            Long refunded=detail.refundedAmountCents();
+            Long shopTotal=candidate.shop().cents();
+            Long providerGross=candidate.provider().amountCents();
+            if(chargeAmount!=null) {
+                amountAvailable++;
+                if(chargeAmount.equals(shopTotal)) chargeShop++;
+                if(chargeAmount.equals(providerGross)) chargeOrder++;
+            }
+            if(paid!=null) {
+                paidAvailable++;
+                if(paid.equals(shopTotal)) paidShop++;
+                else paidDifferentShop++;
+                if(paid.equals(providerGross)) paidOrder++;
+            }
+            if(refunded!=null) {
+                refundAvailable++;
+                if(refunded>0) positiveRefund++;
+            }
+        }
+        return new ChargeEvidence(state,targets,single,skipped,attempted,compared,
+                rejected,unavailable,Map.copyOf(statuses),amountAvailable,chargeShop,
+                chargeOrder,paidAvailable,paidShop,paidOrder,paidDifferentShop,
+                refundAvailable,positiveRefund,cautions);
+    }
+
+    private static ChargeEvidence emptyChargeEvidence(String status,int targets,
+            List<String> cautions) {
+        return new ChargeEvidence(status,targets,0,0,0,0,0,0,Map.of(),
+                0,0,0,0,0,0,0,0,0,cautions);
     }
 
     private SupplementalDiagnostics collectSupplemental(boolean baseline,boolean complete,
