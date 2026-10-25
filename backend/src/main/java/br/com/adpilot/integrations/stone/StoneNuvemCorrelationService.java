@@ -418,8 +418,7 @@ public class StoneNuvemCorrelationService {
                 new CandidateQuality(qualityAllAligned,qualityConflicted,qualityIncomplete));
         if(supplemental.financialDetails().unavailable()>0)
             warnings.add("NUVEMSHOP_FINANCIAL_DETAIL_READ_INCOMPLETE");
-        if("BASELINE_AFTER_EXPANDED_404".equals(
-                baselineProjection?"BASELINE_AFTER_EXPANDED_404":"EXPANDED"))
+        if(baselineProjection)
             warnings.add("FINANCIAL_FIELD_PROBES_ARE_DIAGNOSTIC_NOT_API_COMPATIBILITY_PROOF");
 
         var investigation=new InvestigationDiagnostics(Map.copyOf(shopTimestampFormats),
@@ -441,6 +440,113 @@ public class StoneNuvemCorrelationService {
                 methodsCompared,methodsEqual,methodsDifferent,noCharge,multipleCharges,
                 false,false,false,false,List.copyOf(warnings),audit,investigation,
                 supplemental);
+    }
+
+    private SupplementalDiagnostics collectSupplemental(boolean baseline,boolean complete,
+            List<Candidate> mismatches,CandidateQuality quality) {
+        var fields=new java.util.TreeMap<String,String>();
+        var notes=List.of("LIST_FIELD_PROBES_HAVE_ONE_ROW_AND_ARE_NON_ATOMIC",
+                "DETAIL_ORDER_TOTAL_MAY_HAVE_CHANGED_SINCE_LISTING",
+                "ARITHMETIC_EQUALITY_IS_NOT_CAPTURE_SETTLEMENT_OR_CAUSATION",
+                "NO_ORDER_IDENTIFIERS_OR_INDIVIDUAL_AMOUNTS_IN_REPORT");
+        if(!baseline)
+            return new SupplementalDiagnostics(Map.of(),
+                    emptyDetail("NOT_REQUIRED_EXPANDED_PROJECTION",mismatches.size()),
+                    quality,notes);
+        if(!complete)
+            return new SupplementalDiagnostics(Map.of(),
+                    emptyDetail("SKIPPED_INCOMPLETE_PAGINATION",mismatches.size()),
+                    quality,notes);
+
+        // Four independent, first-row-only probes. Baseline + one field;
+        // never binary-search provider payloads or follow untrusted URLs.
+        for(String field:List.of("subtotal","discount","discount_gateway",
+                "shipping_cost_customer")) {
+            String result=nuvem.probeCorrelationListField(field);
+            fields.put(field,result);
+            if("UPSTREAM_RATE_LIMIT".equals(result)
+                    || "UPSTREAM_AUTH_ERROR".equals(result)
+                    || "UPSTREAM_OTHER_ERROR".equals(result)
+                    || "LOCAL_READ_FAILURE".equals(result)) {
+                // Avoid multiplying upstream errors. Remaining fields stay untested.
+                break;
+            }
+        }
+        if(mismatches.isEmpty())
+            return new SupplementalDiagnostics(Map.copyOf(fields),
+                    emptyDetail("NO_GROSS_MISMATCHES",0),quality,notes);
+        if(mismatches.size()>5)
+            return new SupplementalDiagnostics(Map.copyOf(fields),
+                    emptyDetail("SKIPPED_MORE_THAN_FIVE_MISMATCHES",mismatches.size()),
+                    quality,notes);
+        if(fields.containsValue("UPSTREAM_RATE_LIMIT")
+                ||fields.containsValue("UPSTREAM_AUTH_ERROR")
+                ||fields.containsValue("UPSTREAM_OTHER_ERROR")
+                ||fields.containsValue("LOCAL_READ_FAILURE"))
+            return new SupplementalDiagnostics(Map.copyOf(fields),
+                    emptyDetail("SKIPPED_AFTER_FIELD_PROBE_ERROR",mismatches.size()),
+                    quality,notes);
+
+        int attempted=0,comparable=0,unavailable=0,rejected=0;
+        int subtotalMatch=0,discountMatch=0,shippingMatch=0,arithmeticMatch=0;
+        var presence=new java.util.TreeMap<String,Integer>();
+        String state="COMPLETE";
+        for(Candidate candidate:mismatches) {
+            long shopId;
+            try {
+                shopId=Long.parseLong(candidate.shop().id());
+                if(shopId<=0) throw new NumberFormatException();
+            } catch(NumberFormatException ex) {
+                rejected++;
+                state="PARTIAL_INVALID_ID";
+                continue;
+            }
+            Map<String,Object> detail;
+            attempted++;
+            try {
+                detail=nuvem.orderCorrelationFinancialDetails(shopId);
+            } catch(NuvemshopException ex) {
+                unavailable++;
+                state="STOPPED_AFTER_DETAIL_FAILURE";
+                // In particular do not repeat a 404 or 429 on multiple orders.
+                break;
+            }
+            // Protect against changed orders, non-BRL data, invalid IDs,
+            // and the non-atomic list/detail observation window.
+            if(detail==null
+                    || !candidate.shop().id().equals(digits(detail.get("id")))
+                    || !"BRL".equals(detail.get("currency"))
+                    || !candidate.shop().cents().equals(
+                            amountFromReais(detail.get("total")))) {
+                rejected++;
+                state="PARTIAL_CHANGED_OR_UNVERIFIABLE_DETAIL";
+                continue;
+            }
+            comparable++;
+            Long subtotal=amountFromReais(detail.get("subtotal"));
+            Long discount=amountFromReais(detail.get("discount"));
+            Long discountGateway=amountFromReais(detail.get("discount_gateway"));
+            Long shipping=amountFromReais(detail.get("shipping_cost_customer"));
+            if(subtotal!=null) presence.merge("SUBTOTAL_PRESENT",1,Integer::sum);
+            if(discount!=null) presence.merge("DISCOUNT_PRESENT",1,Integer::sum);
+            if(discountGateway!=null) presence.merge("GATEWAY_DISCOUNT_PRESENT",1,Integer::sum);
+            if(shipping!=null) presence.merge("SHIPPING_COST_PRESENT",1,Integer::sum);
+            long provider=candidate.provider().amountCents();
+            long total=candidate.shop().cents();
+            if(subtotal!=null && provider==subtotal) subtotalMatch++;
+            if(discount!=null && provider-total==discount) discountMatch++;
+            if(shipping!=null && provider-total==shipping) shippingMatch++;
+            if(subtotal!=null && discount!=null && shipping!=null
+                    && subtotal+shipping-discount==total) arithmeticMatch++;
+        }
+        return new SupplementalDiagnostics(Map.copyOf(fields),
+                new DetailAggregate(state,mismatches.size(),attempted,comparable,
+                        unavailable,rejected,Map.copyOf(presence),subtotalMatch,
+                        discountMatch,shippingMatch,arithmeticMatch),quality,notes);
+    }
+
+    private static DetailAggregate emptyDetail(String state,int targets) {
+        return new DetailAggregate(state,targets,0,0,0,0,Map.of(),0,0,0,0);
     }
 
     private static String unsupportedCodeCategory(String code) {
