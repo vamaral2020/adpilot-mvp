@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {money, number} from "../../lib/dashboard";
+import {interpreterPeriod, utcToday} from "../../lib/interpreter-period";
 
 export const dynamic="force-dynamic";
 
@@ -16,7 +17,8 @@ type Evidence={level:string;id:string;adsetId:string;spend:number;impressions:nu
   linkCtrPercent:number|null;costPerLinkClick:number|null;
   attributedCpa:number|null;attributedRoas:number|null;evidenceQuality:string};
 type Report={campaignId:string;campaignObjective:string;campaignStatus:string;
-  currency:string;since:string;until:string;complete:boolean;
+  currency:string;since:string;until:string;analysisMode:string;
+  partialCurrentDay:boolean;complete:boolean;
   adsetConfigurationCoverage:Coverage;adsetInsightsCoverage:Coverage;
   adInsightsCoverage:Coverage;adsets:Adset[];adsetInsights:Evidence[];
   adInsights:Evidence[];warnings:string[];principles:string[]};
@@ -59,9 +61,7 @@ function pastSevenDays():{since:string;until:string} {
   const start=new Date(Date.UTC(end.getUTCFullYear(),end.getUTCMonth(),end.getUTCDate()-6));
   return {since:start.toISOString().slice(0,10),until:end.toISOString().slice(0,10)};
 }
-const validDate=(s:string)=>/^\d{4}-\d{2}-\d{2}$/.test(s)
-  &&!Number.isNaN(Date.parse(s))&&new Date(s).toISOString().slice(0,10)===s;
-function rowsTable(title:string,rows:Evidence[],currency:string) {
+ function rowsTable(title:string,rows:Evidence[],currency:string) {
   return <section className="historySummary">
     <h2>{title}</h2>
     <p className="historySmall">Métricas atribuídas pela Meta; ações ausentes não equivalem a zero.
@@ -94,9 +94,8 @@ export default async function InterpreterPage({searchParams}:{searchParams:Promi
   const defaults=pastSevenDays();
   const since=typeof p.since==="string"?p.since:defaults.since;
   const until=typeof p.until==="string"?p.until:defaults.until;
-  const valid=validDate(since)&&validDate(until)&&since<=until
-    && (Date.parse(until)-Date.parse(since))/86400000<=30
-    &&until<=defaults.until;
+  const period=interpreterPeriod(since,until,utcToday());
+  const valid=period.valid;
   const listing=await read<Page>("/api/v1/meta/campaigns?limit=100");
   const campaigns=listing.data?.data??[];
   const exists=campaigns.some(c=>c.id===campaignId);
@@ -133,10 +132,16 @@ export default async function InterpreterPage({searchParams}:{searchParams:Promi
         </label>
         <button type="submit">Interpretar campanha</button>
       </form>
-      <p className="historySmall">Até 31 dias completos (UTC); leitura sob demanda de até três
-        páginas por conjunto de dados. A coleta não altera orçamento ou anúncios.</p>
+      <p className="historySmall">Até 31 dias (referência UTC), incluindo hoje para
+        monitoramento provisório. Dias anteriores permitem análise histórica contextual;
+        a coleta não altera orçamento ou anúncios.</p>
     </section>
-    {!valid&&<p className="alertBanner error">Escolha até 31 dias completos, sem incluir hoje.</p>}
+    {!valid&&<p className="alertBanner error">Escolha um intervalo válido de até
+      31 dias, sem datas futuras. Hoje é permitido para monitoramento parcial.</p>}
+    {valid&&period.partialCurrentDay&&!report?.data&&
+      <p className="alertBanner caution">Monitoramento de hoje: métricas parciais,
+        sujeitas a atraso de atribuição e a alterações ao longo do dia.
+        Não tome decisões de orçamento com base apenas nesta leitura.</p>}
     {campaignId&&!exists&&<p className="alertBanner caution">
       A campanha selecionada não está na primeira página de campanhas. Selecione uma listada.
     </p>}
@@ -154,6 +159,16 @@ export default async function InterpreterPage({searchParams}:{searchParams:Promi
 
 function InterpreterReport({report:r}:{report:Report}) {
   return <>
+    {r.partialCurrentDay&&<p className="alertBanner caution" role="status">
+      MONITORAMENTO DE HOJE — RESULTADOS PARCIAIS. Investimento, cliques,
+      carrinhos e compras atribuídas ainda podem mudar. Não use este período
+      como resultado final, nem para pausar ou aumentar orçamentos.
+      A Meta utiliza o fuso da conta, que pode diferir da referência UTC do filtro.
+    </p>}
+    {!r.partialCurrentDay&&<p className="alertBanner caution">
+      ANÁLISE HISTÓRICA — período de dias anteriores, mas os eventos atribuídos
+      ainda podem ser revisados pela Meta. Dados não demonstram lucro ou causalidade.
+    </p>}
     <section className="historySummary">
       <h2>Configuração observada</h2>
       <p>Objetivo: <strong>{objectives[r.campaignObjective]??"Não informado"}</strong>
