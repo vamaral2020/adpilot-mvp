@@ -463,11 +463,13 @@ public class StoneNuvemCorrelationService {
         for(String field:List.of("subtotal","discount","discount_gateway",
                 "shipping_cost_customer")) {
             String result=nuvem.probeCorrelationListField(field);
+            if(result==null) result="PROBE_UNAVAILABLE";
             fields.put(field,result);
             if("UPSTREAM_RATE_LIMIT".equals(result)
                     || "UPSTREAM_AUTH_ERROR".equals(result)
                     || "UPSTREAM_OTHER_ERROR".equals(result)
-                    || "LOCAL_READ_FAILURE".equals(result)) {
+                    || "LOCAL_READ_FAILURE".equals(result)
+                    || "PROBE_UNAVAILABLE".equals(result)) {
                 // Avoid multiplying upstream errors. Remaining fields stay untested.
                 break;
             }
@@ -482,7 +484,8 @@ public class StoneNuvemCorrelationService {
         if(fields.containsValue("UPSTREAM_RATE_LIMIT")
                 ||fields.containsValue("UPSTREAM_AUTH_ERROR")
                 ||fields.containsValue("UPSTREAM_OTHER_ERROR")
-                ||fields.containsValue("LOCAL_READ_FAILURE"))
+                ||fields.containsValue("LOCAL_READ_FAILURE")
+                ||fields.containsValue("PROBE_UNAVAILABLE"))
             return new SupplementalDiagnostics(Map.copyOf(fields),
                     emptyDetail("SKIPPED_AFTER_FIELD_PROBE_ERROR",mismatches.size()),
                     quality,notes);
