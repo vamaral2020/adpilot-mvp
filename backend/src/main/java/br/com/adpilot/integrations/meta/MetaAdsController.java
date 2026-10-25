@@ -19,16 +19,34 @@ public class MetaAdsController {
     private final MetaInsightsSummaryService summaryService;
     private final MetaPurchaseAuditService purchaseAudit;
     private final MetaFormatService formatService;
+    private final MetaDeliveryInterpreterService interpreter;
 
     public MetaAdsController(MetaSettings settings, MetaAdsClient client,
                              MetaInsightsSummaryService summaryService,
                              MetaPurchaseAuditService purchaseAudit,
-                             MetaFormatService formatService) {
+                             MetaFormatService formatService,
+                             MetaDeliveryInterpreterService interpreter) {
+        this.interpreter=interpreter;
         this.settings = settings;
         this.client = client;
         this.summaryService = summaryService;
         this.purchaseAudit = purchaseAudit;
         this.formatService=formatService;
+    }
+
+    /**
+     * PR053: on-demand interpretation only, no persistence or Meta ad changes.
+     * Date range excludes today to avoid silently comparing incomplete days.
+     */
+    @GetMapping("/campaigns/{campaignId}/delivery-diagnostics")
+    public ResponseEntity<MetaDeliveryInterpreterService.Report> deliveryDiagnostics(
+            @PathVariable String campaignId,
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate since,
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate until,
+            @RequestParam(defaultValue="100") int pageSize,
+            @RequestParam(defaultValue="3") int maxPages) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(interpreter.inspect(campaignId,since,until,pageSize,maxPages));
     }
 
     @GetMapping("/campaigns/{campaignId}/formats")
