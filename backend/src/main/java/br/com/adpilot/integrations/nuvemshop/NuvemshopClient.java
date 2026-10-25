@@ -60,6 +60,13 @@ public class NuvemshopClient {
     private static final List<String> CROSS_PROVIDER_BASELINE_PROJECTION = List.of(
             "id","number","status","payment_status","total","currency",
             "created_at","gateway","gateway_name","payment_details");
+    private static final List<String> FINANCIAL_COMPONENT_FIELDS = List.of(
+            "subtotal","discount","discount_gateway","shipping_cost_customer");
+    private static final String CORRELATION_DETAIL_FIELDS =
+            "id,total,currency,subtotal,discount,discount_gateway,shipping_cost_customer";
+    private static final List<String> CORRELATION_DETAIL_PROJECTION = List.of(
+            "id","total","currency","subtotal","discount",
+            "discount_gateway","shipping_cost_customer");
     private static final String ORDER_PAYMENT_SIGNALS_FIELDS =
             "id,status,payment_status,total,currency,gateway,gateway_name,"
             + "total_paid_by_customer,total_paid_by_customer_including_fees,payment_details";
@@ -200,6 +207,74 @@ public class NuvemshopClient {
     public NuvemshopPage orderCrossProviderCandidatesBaseline(int page,int perPage) {
         return read("orders",CROSS_PROVIDER_BASELINE_FIELDS,page,perPage,
                 CROSS_PROVIDER_BASELINE_PROJECTION,"payment_details",PAYMENT_METHOD_PROJECTION);
+    }
+
+    /**
+     * PR050: strictly bounded 1-row probe of an allowlisted monetary field.
+     * The fixed vocabulary response does not include order data, IDs or raw bodies.
+     * Called only following a working baseline projection with expanded 404.
+     */
+    public String probeCorrelationListField(String field) {
+        if(!FINANCIAL_COMPONENT_FIELDS.contains(field))
+            throw new IllegalArgumentException("Campo de diagnostico nao permitido.");
+        var allowed=new ArrayList<>(CROSS_PROVIDER_BASELINE_PROJECTION);
+        allowed.add(field);
+        try {
+            NuvemshopPage result=read("orders",CROSS_PROVIDER_BASELINE_FIELDS+","+field,
+                    1,1,allowed,"payment_details",PAYMENT_METHOD_PROJECTION);
+            if(result.data()==null || result.data().isEmpty()) return "NO_ROWS";
+            Object value=result.data().getFirst().get(field);
+            return value==null?"FIELD_ABSENT_OR_NULL":"FIELD_PRESENT";
+        } catch(NuvemshopException ex) {
+            Integer upstream=ex.upstreamStatus();
+            if(upstream==null) return "LOCAL_READ_FAILURE";
+            return switch(upstream) {
+                case 404 -> "UPSTREAM_404";
+                case 401,403 -> "UPSTREAM_AUTH_ERROR";
+                case 429 -> "UPSTREAM_RATE_LIMIT";
+                default -> "UPSTREAM_OTHER_ERROR";
+            };
+        }
+    }
+
+    /**
+     * PR050: single-order GET with allowlisted primitive monetary fields only.
+     * Access token, full order and individual amounts must not leave this client
+     * except to the in-memory aggregate-only correlation service.
+     */
+    public Map<String,Object> orderCorrelationFinancialDetails(long id) {
+        if(id<=0)
+            throw new NuvemshopException(HttpStatus.BAD_REQUEST,"INVALID_ORDER_ID",
+                    "Identificador de pedido invalido.");
+        var installation=repository.installation().orElseThrow(() ->
+                new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "NUVEMSHOP_NOT_CONNECTED","Loja Nuvemshop nao conectada."));
+        String path="/"+settings.apiVersion()+"/"+installation.storeId()
+                +"/orders/"+id;
+        URI uri=URI.create(settings.apiBase()+path+"?fields="+URLEncoder.encode(
+                CORRELATION_DETAIL_FIELDS,StandardCharsets.UTF_8));
+        try {
+            Map<String,Object> result=client.get().uri(uri)
+                    .header(HttpHeaders.AUTHORIZATION,
+                            "Bearer "+crypto.decrypt(installation.tokenEncrypted()))
+                    .header(HttpHeaders.USER_AGENT,settings.userAgent())
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String,Object>>() {});
+            if(result==null)
+                throw new NuvemshopException(HttpStatus.BAD_GATEWAY,
+                        "NUVEMSHOP_ORDER_DETAIL_EMPTY","Detalhe do pedido vazio.");
+            return sanitize(result,CORRELATION_DETAIL_PROJECTION,"",List.of());
+        } catch(RestClientResponseException ex) {
+            int status=ex.getStatusCode().value();
+            throw new NuvemshopException(status==429?HttpStatus.SERVICE_UNAVAILABLE
+                    :HttpStatus.BAD_GATEWAY,
+                    status==429?"NUVEMSHOP_RATE_LIMIT":"NUVEMSHOP_DETAIL_UPSTREAM_ERROR",
+                    "Consulta de componente financeiro indisponivel.",status);
+        } catch(RestClientException ex) {
+            throw new NuvemshopException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "NUVEMSHOP_UNAVAILABLE",
+                    "Consulta de componente financeiro indisponivel.");
+        }
     }
 
     /**
