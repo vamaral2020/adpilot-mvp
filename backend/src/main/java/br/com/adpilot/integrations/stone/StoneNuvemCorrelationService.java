@@ -53,7 +53,7 @@ public class StoneNuvemCorrelationService {
             boolean financiallyVerified,boolean paymentSettlementVerified,
             boolean ordersMatchedToNuvemshop,boolean ordersMatchedToCampaigns,
             List<String> warnings, AuditBreakdown audit,
-            InvestigationDiagnostics investigation) {}
+            InvestigationDiagnostics investigation, SupplementalDiagnostics supplemental) {}
 
     /**
      * PR047: coarse, aggregate-only quality evidence. Never serialize raw
@@ -82,6 +82,19 @@ public class StoneNuvemCorrelationService {
             int grossMismatchesWhereDifferenceEqualsCustomerShipping,
             int grossMismatchesWithConsistentShopSubtotalPlusShippingMinusDiscount,
             String nuvemshopReadMode,
+            List<String> cautions) {}
+
+    public record CandidateQuality(int allComparableSignalsAligned,
+            int hasConflictingSignal,int incompleteEvidence) {}
+
+    public record DetailAggregate(String status,int targeted,int attempted,
+            int comparable,int unavailable,int rejectedOrChanged,
+            Map<String,Integer> componentsPresent,
+            int providerMatchesSubtotal,int deltaEqualsDiscount,int deltaEqualsShipping,
+            int shopSubtotalShippingDiscountIdentity) {}
+
+    public record SupplementalDiagnostics(Map<String,String> independentListFieldProbes,
+            DetailAggregate financialDetails,CandidateQuality candidateQuality,
             List<String> cautions) {}
 
     private record ShopOrder(String id,String number,String paymentStatus,String currency,
@@ -251,6 +264,8 @@ public class StoneNuvemCorrelationService {
         var mismatchedComponents=new java.util.TreeMap<String,Integer>();
         int mismatchSubtotalParity=0,mismatchDiscountParity=0,mismatchShippingParity=0;
         int mismatchShopComponentsConsistent=0;
+        var mismatchedCandidates=new ArrayList<Candidate>();
+        int qualityAllAligned=0,qualityConflicted=0,qualityIncomplete=0;
         int duplicateTargetGroups=(int)shopUsage.values().stream().filter(v->v>1).count();
         for(var c:candidates) {
             if(shopUsage.get(c.shop().id())!=1) {collision++;continue;}
@@ -260,6 +275,8 @@ public class StoneNuvemCorrelationService {
             shopTimestampFormats.merge(c.shop().createdAtFormat(),1,Integer::sum);
             gatewayHints.merge(c.shop().gatewayHint(),1,Integer::sum);
             boolean amountMismatch=false,paidStateMismatch=false,methodMismatch=false;
+            boolean amountAligned=false,paidStateAligned=false,methodAligned=false;
+            boolean timeComparable=false,timeAligned=false;
             if(c.byId() && c.byNumber()) viaBoth++;
             else if(c.byId()) viaId++;
             else viaNumber++;
@@ -269,7 +286,10 @@ public class StoneNuvemCorrelationService {
                     || !"BRL".equals(c.provider().currency())) moneyUnknown++;
             else {
                 moneyCompared++;
-                if(c.provider().amountCents().equals(c.shop().cents())) moneyEqual++;
+                if(c.provider().amountCents().equals(c.shop().cents())) {
+                    moneyEqual++;
+                    amountAligned=true;
+                }
                 else {
                     moneyDifferent++;
                     amountMismatch=true;
@@ -281,14 +301,19 @@ public class StoneNuvemCorrelationService {
                     && !"UNKNOWN".equals(c.shop().paymentStatus())) {
                 stateCompared++;
                 if(("PAID".equals(c.provider().status()))
-                        ==("PAID".equals(c.shop().paymentStatus()))) stateAligned++;
+                        ==("PAID".equals(c.shop().paymentStatus()))) {
+                    stateAligned++;
+                    paidStateAligned=true;
+                }
                 else {stateDifferent++;paidStateMismatch=true;}
             }
             if(c.shop().createdAt()!=null && c.provider().createdAt()!=null) {
                 timesCompared++;
-                long hours=Math.abs(Duration.between(c.shop().createdAt(),
-                        c.provider().createdAt()).toHours());
-                if(hours<=48) timesNear++;
+                timeComparable=true;
+                // Exact boundary; toHours() truncates 48h:59m to 48.
+                timeAligned=Duration.between(c.shop().createdAt(),
+                        c.provider().createdAt()).abs().compareTo(Duration.ofHours(48))<=0;
+                if(timeAligned) timesNear++;
                 else timesFar++;
             }
             var linked=chargesByOrder.getOrDefault(c.provider().id(),List.of());
@@ -299,11 +324,24 @@ public class StoneNuvemCorrelationService {
                 if(!"UNKNOWN".equals(fromProvider)
                         && !"UNKNOWN".equals(c.shop().paymentMethod())) {
                     methodsCompared++;
-                    if(fromProvider.equals(c.shop().paymentMethod())) methodsEqual++;
+                    if(fromProvider.equals(c.shop().paymentMethod())) {
+                        methodsEqual++;
+                        methodAligned=true;
+                    }
                     else {methodsDifferent++;methodMismatch=true;}
                 }
             }
+            boolean gatewayConflicted="OTHER_REPORTED".equals(c.shop().gatewayHint())
+                    || "CONFLICTING_LABELS".equals(c.shop().gatewayHint());
+            boolean hasConflict=amountMismatch||paidStateMismatch||methodMismatch
+                    || timeComparable&&!timeAligned || gatewayConflicted;
+            if(hasConflict) qualityConflicted++;
+            else if(amountAligned&&paidStateAligned&&methodAligned&&timeAligned
+                    &&"STONE_OR_PAGARME_REPORTED".equals(c.shop().gatewayHint()))
+                qualityAllAligned++;
+            else qualityIncomplete++;
             if(amountMismatch) {
+                mismatchedCandidates.add(c);
                 var sh=c.shop();
                 if(sh.subtotalCents()!=null)
                     mismatchedComponents.merge("SUBTOTAL_PRESENT",1,Integer::sum);
@@ -372,6 +410,17 @@ public class StoneNuvemCorrelationService {
                         "NUMERIC_CODE_IS_UNVERIFIED_LINK_EVIDENCE",
                         "TIMESTAMPS_ARE_NOT_ATOMIC_ACROSS_SYSTEMS"));
 
+        boolean complete=shopAcc.report().paginationReconciled()
+                &&providerAcc.report().paginationReconciled()
+                &&chargeAcc.report().paginationReconciled();
+        var supplemental=collectSupplemental(baselineProjection,complete,
+                mismatchedCandidates,
+                new CandidateQuality(qualityAllAligned,qualityConflicted,qualityIncomplete));
+        if(supplemental.financialDetails().unavailable()>0)
+            warnings.add("NUVEMSHOP_FINANCIAL_DETAIL_READ_INCOMPLETE");
+        if(baselineProjection)
+            warnings.add("FINANCIAL_FIELD_PROBES_ARE_DIAGNOSTIC_NOT_API_COMPATIBILITY_PROOF");
+
         var investigation=new InvestigationDiagnostics(Map.copyOf(shopTimestampFormats),
                 Map.copyOf(mismatchedComponents),mismatchSubtotalParity,
                 mismatchDiscountParity,mismatchShippingParity,
@@ -389,7 +438,118 @@ public class StoneNuvemCorrelationService {
                 moneyUnknown,stateCompared,stateAligned,stateDifferent,
                 timesCompared,timesNear,timesFar,
                 methodsCompared,methodsEqual,methodsDifferent,noCharge,multipleCharges,
-                false,false,false,false,List.copyOf(warnings),audit,investigation);
+                false,false,false,false,List.copyOf(warnings),audit,investigation,
+                supplemental);
+    }
+
+    private SupplementalDiagnostics collectSupplemental(boolean baseline,boolean complete,
+            List<Candidate> mismatches,CandidateQuality quality) {
+        var fields=new java.util.TreeMap<String,String>();
+        var notes=List.of("LIST_FIELD_PROBES_HAVE_ONE_ROW_AND_ARE_NON_ATOMIC",
+                "DETAIL_ORDER_TOTAL_MAY_HAVE_CHANGED_SINCE_LISTING",
+                "ARITHMETIC_EQUALITY_IS_NOT_CAPTURE_SETTLEMENT_OR_CAUSATION",
+                "NO_ORDER_IDENTIFIERS_OR_INDIVIDUAL_AMOUNTS_IN_REPORT");
+        if(!baseline)
+            return new SupplementalDiagnostics(Map.of(),
+                    emptyDetail("NOT_REQUIRED_EXPANDED_PROJECTION",mismatches.size()),
+                    quality,notes);
+        if(!complete)
+            return new SupplementalDiagnostics(Map.of(),
+                    emptyDetail("SKIPPED_INCOMPLETE_PAGINATION",mismatches.size()),
+                    quality,notes);
+
+        // Four independent, first-row-only probes. Baseline + one field;
+        // never binary-search provider payloads or follow untrusted URLs.
+        for(String field:List.of("subtotal","discount","discount_gateway",
+                "shipping_cost_customer")) {
+            String result=nuvem.probeCorrelationListField(field);
+            if(result==null) result="PROBE_UNAVAILABLE";
+            fields.put(field,result);
+            if("UPSTREAM_RATE_LIMIT".equals(result)
+                    || "UPSTREAM_AUTH_ERROR".equals(result)
+                    || "UPSTREAM_OTHER_ERROR".equals(result)
+                    || "LOCAL_READ_FAILURE".equals(result)
+                    || "PROBE_UNAVAILABLE".equals(result)) {
+                // Avoid multiplying upstream errors. Remaining fields stay untested.
+                break;
+            }
+        }
+        if(mismatches.isEmpty())
+            return new SupplementalDiagnostics(Map.copyOf(fields),
+                    emptyDetail("NO_GROSS_MISMATCHES",0),quality,notes);
+        if(mismatches.size()>5)
+            return new SupplementalDiagnostics(Map.copyOf(fields),
+                    emptyDetail("SKIPPED_MORE_THAN_FIVE_MISMATCHES",mismatches.size()),
+                    quality,notes);
+        if(fields.containsValue("UPSTREAM_RATE_LIMIT")
+                ||fields.containsValue("UPSTREAM_AUTH_ERROR")
+                ||fields.containsValue("UPSTREAM_OTHER_ERROR")
+                ||fields.containsValue("LOCAL_READ_FAILURE")
+                ||fields.containsValue("PROBE_UNAVAILABLE"))
+            return new SupplementalDiagnostics(Map.copyOf(fields),
+                    emptyDetail("SKIPPED_AFTER_FIELD_PROBE_ERROR",mismatches.size()),
+                    quality,notes);
+
+        int attempted=0,comparable=0,unavailable=0,rejected=0;
+        int subtotalMatch=0,discountMatch=0,shippingMatch=0,arithmeticMatch=0;
+        var presence=new java.util.TreeMap<String,Integer>();
+        String state="COMPLETE";
+        for(Candidate candidate:mismatches) {
+            long shopId;
+            try {
+                shopId=Long.parseLong(candidate.shop().id());
+                if(shopId<=0) throw new NumberFormatException();
+            } catch(NumberFormatException ex) {
+                rejected++;
+                state="PARTIAL_INVALID_ID";
+                continue;
+            }
+            Map<String,Object> detail;
+            attempted++;
+            try {
+                detail=nuvem.orderCorrelationFinancialDetails(shopId);
+            } catch(NuvemshopException ex) {
+                unavailable++;
+                state="STOPPED_AFTER_DETAIL_FAILURE";
+                // In particular do not repeat a 404 or 429 on multiple orders.
+                break;
+            }
+            // Protect against changed orders, non-BRL data, invalid IDs,
+            // and the non-atomic list/detail observation window.
+            if(detail==null
+                    || !candidate.shop().id().equals(digits(detail.get("id")))
+                    || !"BRL".equals(detail.get("currency"))
+                    || !candidate.shop().cents().equals(
+                            amountFromReais(detail.get("total")))) {
+                rejected++;
+                state="PARTIAL_CHANGED_OR_UNVERIFIABLE_DETAIL";
+                continue;
+            }
+            comparable++;
+            Long subtotal=amountFromReais(detail.get("subtotal"));
+            Long discount=amountFromReais(detail.get("discount"));
+            Long discountGateway=amountFromReais(detail.get("discount_gateway"));
+            Long shipping=amountFromReais(detail.get("shipping_cost_customer"));
+            if(subtotal!=null) presence.merge("SUBTOTAL_PRESENT",1,Integer::sum);
+            if(discount!=null) presence.merge("DISCOUNT_PRESENT",1,Integer::sum);
+            if(discountGateway!=null) presence.merge("GATEWAY_DISCOUNT_PRESENT",1,Integer::sum);
+            if(shipping!=null) presence.merge("SHIPPING_COST_PRESENT",1,Integer::sum);
+            long provider=candidate.provider().amountCents();
+            long total=candidate.shop().cents();
+            if(subtotal!=null && provider==subtotal) subtotalMatch++;
+            if(discount!=null && provider-total==discount) discountMatch++;
+            if(shipping!=null && provider-total==shipping) shippingMatch++;
+            if(subtotal!=null && discount!=null && shipping!=null
+                    && subtotal+shipping-discount==total) arithmeticMatch++;
+        }
+        return new SupplementalDiagnostics(Map.copyOf(fields),
+                new DetailAggregate(state,mismatches.size(),attempted,comparable,
+                        unavailable,rejected,Map.copyOf(presence),subtotalMatch,
+                        discountMatch,shippingMatch,arithmeticMatch),quality,notes);
+    }
+
+    private static DetailAggregate emptyDetail(String state,int targets) {
+        return new DetailAggregate(state,targets,0,0,0,0,Map.of(),0,0,0,0);
     }
 
     private static String unsupportedCodeCategory(String code) {
