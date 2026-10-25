@@ -394,4 +394,146 @@ class StoneNuvemCorrelationServiceTest {
         verifyNoInteractions(stone);
     }
 
+    @Test void exact48HourWindowRejects48HoursAndHalfSecond() {
+        var outside=shopRow("9001","158","paid","100.00","pix");
+        outside.put("created_at","2026-10-22T12:00:00.500+00:00");
+        fixtures(List.of(outside),List.of(order("or_aaa111","158","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","PIX")));
+        var result=service.inspect(50,10);
+        assertEquals(1,result.creationTimesComparable());
+        assertEquals(0,result.creationTimesWithin48Hours());
+        assertEquals(1,result.creationTimesOver48Hours());
+        assertEquals(1,result.supplemental().candidateQuality().hasConflictingSignal());
+        assertFalse(result.financiallyVerified());
+    }
+
+    @Test void exactly48HoursIsWithinWindowAndCanAlignAllExploratorySignals() {
+        var row=shopRow("9001","158","paid","100.00","pix");
+        row.put("created_at","2026-10-22T12:00:00+00:00");
+        row.put("gateway","stone");
+        fixtures(List.of(row),List.of(order("or_aaa111","158","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","PIX")));
+        var result=service.inspect(50,10);
+        assertEquals(1,result.creationTimesWithin48Hours());
+        assertEquals(1,result.supplemental().candidateQuality().allComparableSignalsAligned());
+        assertEquals(0,result.supplemental().candidateQuality().hasConflictingSignal());
+        assertEquals(0,result.supplemental().candidateQuality().incompleteEvidence());
+        assertFalse(result.ordersMatchedToNuvemshop());
+    }
+
+    @Test void independentFinancialProbesAndDetailArithmeticAreAggregateOnly() {
+        var sh=shopRow("9001","158","paid","95.00","credit_card");
+        sh.put("gateway","stone");
+        fixtures(List.of(sh),List.of(order("or_aaa111","158","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","CREDIT_CARD")));
+        when(shop.orderCrossProviderCandidates(1,50)).thenThrow(
+                new br.com.adpilot.integrations.nuvemshop.NuvemshopException(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY,
+                        "NUVEMSHOP_UPSTREAM_ERROR","read failed",404));
+        when(shop.orderCrossProviderCandidatesBaseline(1,50)).thenReturn(
+                new NuvemshopPage(List.of(sh),1,50,1L,false));
+        when(shop.probeCorrelationListField(anyString())).thenReturn("UPSTREAM_404");
+        when(shop.orderCorrelationFinancialDetails(9001L)).thenReturn(Map.of(
+                "id",9001L,"currency","BRL","total","95.00",
+                "subtotal","100.00","discount","5.00",
+                "discount_gateway","5.00","shipping_cost_customer","0.00"));
+        var result=service.inspect(50,10);
+        var supplemental=result.supplemental();
+        assertEquals(Map.of("subtotal","UPSTREAM_404","discount","UPSTREAM_404",
+                "discount_gateway","UPSTREAM_404",
+                "shipping_cost_customer","UPSTREAM_404"),
+                supplemental.independentListFieldProbes());
+        var detail=supplemental.financialDetails();
+        assertEquals("COMPLETE",detail.status());
+        assertEquals(1,detail.targeted());
+        assertEquals(1,detail.attempted());
+        assertEquals(1,detail.comparable());
+        assertEquals(1,detail.providerMatchesSubtotal());
+        assertEquals(1,detail.deltaEqualsDiscount());
+        assertEquals(0,detail.deltaEqualsShipping());
+        assertEquals(1,detail.shopSubtotalShippingDiscountIdentity());
+        assertEquals(Map.of("SUBTOTAL_PRESENT",1,"DISCOUNT_PRESENT",1,
+                "GATEWAY_DISCOUNT_PRESENT",1,"SHIPPING_COST_PRESENT",1),
+                detail.componentsPresent());
+        assertEquals(1,supplemental.candidateQuality().hasConflictingSignal());
+        assertFalse(result.financiallyVerified());
+        assertFalse(result.paymentSettlementVerified());
+        assertFalse(result.ordersMatchedToNuvemshop());
+        assertFalse(result.ordersMatchedToCampaigns());
+        String output=result.toString();
+        assertFalse(output.contains("or_aaa111"));
+        assertFalse(output.contains("9001"));
+        assertFalse(output.contains("95.00"));
+        assertFalse(output.contains("100.00"));
+    }
+
+    @Test void changedDetailAmountCannotCountAsFinancialEvidence() {
+        var sh=shopRow("9001","158","paid","95.00","pix");
+        fixtures(List.of(sh),List.of(order("or_aaa111","158","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","PIX")));
+        when(shop.orderCrossProviderCandidates(1,50)).thenThrow(
+                new br.com.adpilot.integrations.nuvemshop.NuvemshopException(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY,
+                        "NUVEMSHOP_UPSTREAM_ERROR","read failed",404));
+        when(shop.orderCrossProviderCandidatesBaseline(1,50)).thenReturn(
+                new NuvemshopPage(List.of(sh),1,50,1L,false));
+        when(shop.probeCorrelationListField(anyString())).thenReturn("FIELD_PRESENT");
+        when(shop.orderCorrelationFinancialDetails(9001L)).thenReturn(Map.of(
+                "id",9001L,"currency","BRL","total","94.00",
+                "subtotal","100.00","discount","6.00","shipping_cost_customer","0.00"));
+        var details=service.inspect(50,10).supplemental().financialDetails();
+        assertEquals(1,details.attempted());
+        assertEquals(0,details.comparable());
+        assertEquals(1,details.rejectedOrChanged());
+        assertEquals(0,details.providerMatchesSubtotal());
+        assertTrue(details.componentsPresent().isEmpty());
+        assertEquals("PARTIAL_CHANGED_OR_UNVERIFIABLE_DETAIL",details.status());
+    }
+
+    @Test void stoppedDetail404DoesNotRetryOtherOrders() {
+        var a=shopRow("9001","158","paid","95.00","pix");
+        var b=shopRow("9002","159","paid","95.00","pix");
+        fixtures(List.of(a,b),List.of(order("or_aaa111","158","PAID",10000),
+                order("or_bbb222","159","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","PIX"),
+                        charge("ch_bbb222","or_bbb222","PAID","PIX")));
+        when(shop.orderCrossProviderCandidates(1,50)).thenThrow(
+                new br.com.adpilot.integrations.nuvemshop.NuvemshopException(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY,
+                        "NUVEMSHOP_UPSTREAM_ERROR","read failed",404));
+        when(shop.orderCrossProviderCandidatesBaseline(1,50)).thenReturn(
+                new NuvemshopPage(List.of(a,b),1,50,2L,false));
+        when(shop.probeCorrelationListField(anyString())).thenReturn("UPSTREAM_404");
+        when(shop.orderCorrelationFinancialDetails(9001L)).thenThrow(
+                new br.com.adpilot.integrations.nuvemshop.NuvemshopException(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY,
+                        "NUVEMSHOP_DETAIL_UPSTREAM_ERROR","sanitized",404));
+        var result=service.inspect(50,10);
+        assertEquals(1,result.supplemental().financialDetails().attempted());
+        assertEquals(1,result.supplemental().financialDetails().unavailable());
+        assertEquals("STOPPED_AFTER_DETAIL_FAILURE",
+                result.supplemental().financialDetails().status());
+        verify(shop,never()).orderCorrelationFinancialDetails(9002L);
+        assertTrue(result.warnings().contains("NUVEMSHOP_FINANCIAL_DETAIL_READ_INCOMPLETE"));
+    }
+
+    @Test void non404ProbeErrorStopsFurtherFieldsAndSkipsDetailRequests() {
+        var sh=shopRow("9001","158","paid","95.00","pix");
+        fixtures(List.of(sh),List.of(order("or_aaa111","158","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","PIX")));
+        when(shop.orderCrossProviderCandidates(1,50)).thenThrow(
+                new br.com.adpilot.integrations.nuvemshop.NuvemshopException(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY,
+                        "NUVEMSHOP_UPSTREAM_ERROR","read failed",404));
+        when(shop.orderCrossProviderCandidatesBaseline(1,50)).thenReturn(
+                new NuvemshopPage(List.of(sh),1,50,1L,false));
+        when(shop.probeCorrelationListField("subtotal")).thenReturn("UPSTREAM_RATE_LIMIT");
+        var result=service.inspect(50,10);
+        assertEquals(Map.of("subtotal","UPSTREAM_RATE_LIMIT"),
+                result.supplemental().independentListFieldProbes());
+        assertEquals("SKIPPED_AFTER_FIELD_PROBE_ERROR",
+                result.supplemental().financialDetails().status());
+        verify(shop,never()).orderCorrelationFinancialDetails(anyLong());
+    }
+
 }
