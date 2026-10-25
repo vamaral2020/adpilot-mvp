@@ -29,8 +29,13 @@ public class MetaDeliveryInterpreterService {
             BigDecimal linkCtrPercent,BigDecimal costPerLinkClick,
             BigDecimal attributedCpa,BigDecimal attributedRoas,String evidenceQuality) {}
     public record Coverage(boolean complete,int pagesFetched,int rowsFetched) {}
+    /**
+     * complete is pagination completeness ONLY; partialCurrentDay marks a
+     * provisional calendar window that must never be ranked as final.
+     */
     public record Report(String campaignId,String campaignObjective,String campaignStatus,
-            String currency,LocalDate since,LocalDate until,boolean complete,
+            String currency,LocalDate since,LocalDate until,
+            String analysisMode,boolean partialCurrentDay,boolean complete,
             Coverage adsetConfigurationCoverage,Coverage adsetInsightsCoverage,
             Coverage adInsightsCoverage,List<Adset> adsets,List<Evidence> adsetInsights,
             List<Evidence> adInsights,List<String> warnings,List<String> principles) {}
@@ -46,6 +51,7 @@ public class MetaDeliveryInterpreterService {
                 ||until.isAfter(LocalDate.now(ZoneOffset.UTC)))
             throw new MetaApiException(HttpStatus.BAD_REQUEST,"INVALID_DATE_RANGE",
                     "Informe ate 31 dias completos sem datas futuras.");
+        final boolean partialCurrentDay=until.equals(LocalDate.now(ZoneOffset.UTC));
         if(pageSize<1||pageSize>100||maxPages<1||maxPages>3)
             throw new MetaApiException(HttpStatus.BAD_REQUEST,"INVALID_PAGINATION",
                     "pageSize 1..100, maxPages 1..3.");
@@ -96,7 +102,12 @@ public class MetaDeliveryInterpreterService {
                 "ACTIONS_MISSING_MEANS_UNKNOWN_NOT_ZERO",
                 "ALL_CLICKS_DIFFER_FROM_LINK_CLICKS",
                 "ATTRIBUTION_LAG_AND_SMALL_SAMPLES_POSSIBLE",
-                "NO_AD_CHANGES_OR_BUDGET_AUTOMATION"));
+                "NO_AD_CHANGES_OR_BUDGET_AUTOMATION",
+                "META_ACCOUNT_REPORTING_TIMEZONE_MAY_DIFFER_FROM_UTC"));
+        if(partialCurrentDay) {
+            warnings.add("PARTIAL_CURRENT_DAY");
+            warnings.add("INTRADAY_METRICS_ARE_PROVISIONAL_NO_BUDGET_DECISIONS");
+        }
         if(!complete) warnings.add("INCOMPLETE_PAGINATION_NO_FINAL_RANKING");
         if("UNKNOWN".equals(currency)) warnings.add("CURRENCY_UNKNOWN");
         if(configurations.stream().anyMatch(a->
@@ -105,10 +116,13 @@ public class MetaDeliveryInterpreterService {
         if(adsetSignals.stream().anyMatch(a->"UNKNOWN".equals(a.attributionSetting()))
                 ||adSignals.stream().anyMatch(a->"UNKNOWN".equals(a.attributionSetting())))
             warnings.add("ATTRIBUTION_SETTING_UNKNOWN");
-        return new Report(campaignId,objective,status,currency,since,until,complete,
+        return new Report(campaignId,objective,status,currency,since,until,
+                partialCurrentDay?"CURRENT_DAY_MONITORING":"HISTORICAL_CONTEXT",
+                partialCurrentDay,complete,
                 config.coverage(),sets.coverage(),ads.coverage(),List.copyOf(configurations),
                 List.copyOf(adsetSignals),List.copyOf(adSignals),List.copyOf(warnings),
-                List.of("CHECK_PURCHASE_EVENT_BEFORE_CHANGING_AUDIENCE",
+                List.of("CURRENT_DAY_IS_FOR_MONITORING_NOT_FINAL_COMPARISON",
+                        "CHECK_PURCHASE_EVENT_BEFORE_CHANGING_AUDIENCE",
                         "COMPARE_SIMILAR_OBJECTIVES_ATTRIBUTION_AND_PERIODS",
                         "CREATIVE_AND_LANDING_PAGE_TESTS_REQUIRE_A_HYPOTHESIS",
                         "NO_PAUSE_SCALE_OR_PROFIT_CLAIMS_FROM_ATTRIBUTED_ROAS"));
