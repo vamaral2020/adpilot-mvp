@@ -138,6 +138,76 @@ public class MetaAdsClient {
                         "creative"));
     }
 
+    // PR053: bounded, on-demand diagnostic, distinct from persisted campaign insights.
+    // Never request targeting, customer data, ad copy or asset metadata here.
+    private static final List<String> DELIVERY_INSIGHT_FIELDS = List.of(
+            "campaign_id","adset_id","ad_id","spend","impressions","clicks",
+            "inline_link_clicks","actions","action_values","attribution_setting");
+    private static final List<String> DELIVERY_ADSET_FIELDS = List.of(
+            "id","campaign_id","name","optimization_goal","billing_event",
+            "bid_strategy","destination_type","effective_status","promoted_object");
+
+    /** Verify ownership before any campaign-scoped request. */
+    public Map<String,Object> deliveryCampaign(String id) {
+        validateCampaignId(id);
+        var row=getCampaign(id,"",Map.of("fields","id,account_id,objective,effective_status"));
+        if(!id.equals(String.valueOf(row.get("id")))
+                || !settings.accountId().equals(
+                        String.valueOf(row.get("account_id")).replaceFirst("^act_","")))
+            throw new MetaApiException(HttpStatus.NOT_FOUND,"CAMPAIGN_NOT_IN_ACCOUNT",
+                    "Campanha nao identificada na conta Meta configurada.");
+        return project(row,List.of("id","objective","effective_status"));
+    }
+
+    /** Minimum ad-set delivery configuration, with promoted event only (no pixel ID). */
+    public MetaPage deliveryAdsets(String campaignId,int limit,String after) {
+        validateCampaignId(campaignId);
+        validatePage(limit,after);
+        var query=new LinkedHashMap<String,Object>();
+        query.put("fields",String.join(",",DELIVERY_ADSET_FIELDS));
+        query.put("limit",limit);
+        if(after!=null && !after.isBlank()) query.put("after",after);
+        MetaPage original=page(getCampaign(campaignId,"adsets",query),DELIVERY_ADSET_FIELDS);
+        var sanitized=new java.util.ArrayList<Map<String,Object>>();
+        for(var raw:original.data()) {
+            var row=new LinkedHashMap<>(raw);
+            Object promoted=row.remove("promoted_object");
+            if(promoted instanceof Map<?,?> detail) {
+                // Only recognized event type, never pixel_id, custom_event_id,
+                // application ID or anything from targeting.
+                String event=String.valueOf(detail.get("custom_event_type"));
+                if(List.of("PURCHASE","ADD_TO_CART","INITIATED_CHECKOUT",
+                        "LEAD","COMPLETE_REGISTRATION").contains(event))
+                    row.put("promoted_event",event);
+            }
+            row.values().removeIf(java.util.Objects::isNull);
+            sanitized.add(Map.copyOf(row));
+        }
+        return new MetaPage(List.copyOf(sanitized),original.after());
+    }
+
+    /** Ad-set or ad insights, aggregated for the requested calendar range. */
+    public MetaPage deliveryInsights(String campaignId,String level,
+            LocalDate since,LocalDate until,int limit,String after) {
+        validateCampaignId(campaignId);
+        validatePage(limit,after);
+        if(!"adset".equals(level)&&!"ad".equals(level))
+            throw new MetaApiException(HttpStatus.BAD_REQUEST,"INVALID_INSIGHTS_LEVEL",
+                    "Nivel de detalhamento invalido.");
+        if(since==null || until==null || since.isAfter(until)
+                || ChronoUnit.DAYS.between(since,until)>30
+                || until.isAfter(LocalDate.now(java.time.ZoneOffset.UTC)))
+            throw new MetaApiException(HttpStatus.BAD_REQUEST,"INVALID_DATE_RANGE",
+                    "Informe periodo completo de 1 a 31 dias, sem datas futuras.");
+        var query=new LinkedHashMap<String,Object>();
+        query.put("fields",String.join(",",DELIVERY_INSIGHT_FIELDS));
+        query.put("level",level);
+        query.put("time_range","{\"since\":\""+since+"\",\"until\":\""+until+"\"}");
+        query.put("limit",limit);
+        if(after!=null&&!after.isBlank()) query.put("after",after);
+        return page(getCampaign(campaignId,"insights",query),DELIVERY_INSIGHT_FIELDS);
+    }
+
     private static void validateCampaignId(String id) {
         if(id==null || !id.matches("[0-9]{1,40}"))
             throw new MetaApiException(HttpStatus.BAD_REQUEST,"INVALID_CAMPAIGN_ID",
