@@ -180,6 +180,7 @@ public class MetaAdsClient {
                         "LEAD","COMPLETE_REGISTRATION").contains(event))
                     row.put("promoted_event",event);
             }
+            row.values().removeIf(java.util.Objects::isNull);
             sanitized.add(Map.copyOf(row));
         }
         return new MetaPage(List.copyOf(sanitized),original.after());
