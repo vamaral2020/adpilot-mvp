@@ -53,7 +53,7 @@ public class StoneNuvemCorrelationService {
             boolean financiallyVerified,boolean paymentSettlementVerified,
             boolean ordersMatchedToNuvemshop,boolean ordersMatchedToCampaigns,
             List<String> warnings, AuditBreakdown audit,
-            InvestigationDiagnostics investigation) {}
+            InvestigationDiagnostics investigation, SupplementalDiagnostics supplemental) {}
 
     /**
      * PR047: coarse, aggregate-only quality evidence. Never serialize raw
@@ -82,6 +82,19 @@ public class StoneNuvemCorrelationService {
             int grossMismatchesWhereDifferenceEqualsCustomerShipping,
             int grossMismatchesWithConsistentShopSubtotalPlusShippingMinusDiscount,
             String nuvemshopReadMode,
+            List<String> cautions) {}
+
+    public record CandidateQuality(int allComparableSignalsAligned,
+            int hasConflictingSignal,int incompleteEvidence) {}
+
+    public record DetailAggregate(String status,int targeted,int attempted,
+            int comparable,int unavailable,int rejectedOrChanged,
+            Map<String,Integer> componentsPresent,
+            int providerMatchesSubtotal,int deltaEqualsDiscount,int deltaEqualsShipping,
+            int shopSubtotalShippingDiscountIdentity) {}
+
+    public record SupplementalDiagnostics(Map<String,String> independentListFieldProbes,
+            DetailAggregate financialDetails,CandidateQuality candidateQuality,
             List<String> cautions) {}
 
     private record ShopOrder(String id,String number,String paymentStatus,String currency,
@@ -251,6 +264,8 @@ public class StoneNuvemCorrelationService {
         var mismatchedComponents=new java.util.TreeMap<String,Integer>();
         int mismatchSubtotalParity=0,mismatchDiscountParity=0,mismatchShippingParity=0;
         int mismatchShopComponentsConsistent=0;
+        var mismatchedCandidates=new ArrayList<Candidate>();
+        int qualityAllAligned=0,qualityConflicted=0,qualityIncomplete=0;
         int duplicateTargetGroups=(int)shopUsage.values().stream().filter(v->v>1).count();
         for(var c:candidates) {
             if(shopUsage.get(c.shop().id())!=1) {collision++;continue;}
@@ -260,6 +275,8 @@ public class StoneNuvemCorrelationService {
             shopTimestampFormats.merge(c.shop().createdAtFormat(),1,Integer::sum);
             gatewayHints.merge(c.shop().gatewayHint(),1,Integer::sum);
             boolean amountMismatch=false,paidStateMismatch=false,methodMismatch=false;
+            boolean amountAligned=false,paidStateAligned=false,methodAligned=false;
+            boolean timeComparable=false,timeAligned=false;
             if(c.byId() && c.byNumber()) viaBoth++;
             else if(c.byId()) viaId++;
             else viaNumber++;
@@ -269,7 +286,10 @@ public class StoneNuvemCorrelationService {
                     || !"BRL".equals(c.provider().currency())) moneyUnknown++;
             else {
                 moneyCompared++;
-                if(c.provider().amountCents().equals(c.shop().cents())) moneyEqual++;
+                if(c.provider().amountCents().equals(c.shop().cents())) {
+                    moneyEqual++;
+                    amountAligned=true;
+                }
                 else {
                     moneyDifferent++;
                     amountMismatch=true;
@@ -281,14 +301,19 @@ public class StoneNuvemCorrelationService {
                     && !"UNKNOWN".equals(c.shop().paymentStatus())) {
                 stateCompared++;
                 if(("PAID".equals(c.provider().status()))
-                        ==("PAID".equals(c.shop().paymentStatus()))) stateAligned++;
+                        ==("PAID".equals(c.shop().paymentStatus()))) {
+                    stateAligned++;
+                    paidStateAligned=true;
+                }
                 else {stateDifferent++;paidStateMismatch=true;}
             }
             if(c.shop().createdAt()!=null && c.provider().createdAt()!=null) {
                 timesCompared++;
-                long hours=Math.abs(Duration.between(c.shop().createdAt(),
-                        c.provider().createdAt()).toHours());
-                if(hours<=48) timesNear++;
+                timeComparable=true;
+                // Exact boundary; toHours() truncates 48h:59m to 48.
+                timeAligned=Duration.between(c.shop().createdAt(),
+                        c.provider().createdAt()).abs().compareTo(Duration.ofHours(48))<=0;
+                if(timeAligned) timesNear++;
                 else timesFar++;
             }
             var linked=chargesByOrder.getOrDefault(c.provider().id(),List.of());
@@ -299,11 +324,24 @@ public class StoneNuvemCorrelationService {
                 if(!"UNKNOWN".equals(fromProvider)
                         && !"UNKNOWN".equals(c.shop().paymentMethod())) {
                     methodsCompared++;
-                    if(fromProvider.equals(c.shop().paymentMethod())) methodsEqual++;
+                    if(fromProvider.equals(c.shop().paymentMethod())) {
+                        methodsEqual++;
+                        methodAligned=true;
+                    }
                     else {methodsDifferent++;methodMismatch=true;}
                 }
             }
+            boolean gatewayConflicted="OTHER_REPORTED".equals(c.shop().gatewayHint())
+                    || "CONFLICTING_LABELS".equals(c.shop().gatewayHint());
+            boolean hasConflict=amountMismatch||paidStateMismatch||methodMismatch
+                    || timeComparable&&!timeAligned || gatewayConflicted;
+            if(hasConflict) qualityConflicted++;
+            else if(amountAligned&&paidStateAligned&&methodAligned&&timeAligned
+                    &&"STONE_OR_PAGARME_REPORTED".equals(c.shop().gatewayHint()))
+                qualityAllAligned++;
+            else qualityIncomplete++;
             if(amountMismatch) {
+                mismatchedCandidates.add(c);
                 var sh=c.shop();
                 if(sh.subtotalCents()!=null)
                     mismatchedComponents.merge("SUBTOTAL_PRESENT",1,Integer::sum);
@@ -372,6 +410,18 @@ public class StoneNuvemCorrelationService {
                         "NUMERIC_CODE_IS_UNVERIFIED_LINK_EVIDENCE",
                         "TIMESTAMPS_ARE_NOT_ATOMIC_ACROSS_SYSTEMS"));
 
+        boolean complete=shopAcc.report().paginationReconciled()
+                &&providerAcc.report().paginationReconciled()
+                &&chargeAcc.report().paginationReconciled();
+        var supplemental=collectSupplemental(baselineProjection,complete,
+                mismatchedCandidates,
+                new CandidateQuality(qualityAllAligned,qualityConflicted,qualityIncomplete));
+        if(supplemental.financialDetails().unavailable()>0)
+            warnings.add("NUVEMSHOP_FINANCIAL_DETAIL_READ_INCOMPLETE");
+        if("BASELINE_AFTER_EXPANDED_404".equals(
+                baselineProjection?"BASELINE_AFTER_EXPANDED_404":"EXPANDED"))
+            warnings.add("FINANCIAL_FIELD_PROBES_ARE_DIAGNOSTIC_NOT_API_COMPATIBILITY_PROOF");
+
         var investigation=new InvestigationDiagnostics(Map.copyOf(shopTimestampFormats),
                 Map.copyOf(mismatchedComponents),mismatchSubtotalParity,
                 mismatchDiscountParity,mismatchShippingParity,
@@ -389,7 +439,8 @@ public class StoneNuvemCorrelationService {
                 moneyUnknown,stateCompared,stateAligned,stateDifferent,
                 timesCompared,timesNear,timesFar,
                 methodsCompared,methodsEqual,methodsDifferent,noCharge,multipleCharges,
-                false,false,false,false,List.copyOf(warnings),audit,investigation);
+                false,false,false,false,List.copyOf(warnings),audit,investigation,
+                supplemental);
     }
 
     private static String unsupportedCodeCategory(String code) {
