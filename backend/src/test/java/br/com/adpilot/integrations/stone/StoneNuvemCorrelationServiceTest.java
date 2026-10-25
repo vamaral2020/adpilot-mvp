@@ -440,8 +440,7 @@ class StoneNuvemCorrelationServiceTest {
         var result=service.inspect(50,10);
         var supplemental=result.supplemental();
         assertEquals(Map.of("subtotal","UPSTREAM_404","discount","UPSTREAM_404",
-                "discount_gateway","UPSTREAM_404",
-                "shipping_cost_customer","UPSTREAM_404"),
+                "discount_gateway","UPSTREAM_404"),
                 supplemental.independentListFieldProbes());
         var detail=supplemental.financialDetails();
         assertEquals("COMPLETE",detail.status());
@@ -534,6 +533,65 @@ class StoneNuvemCorrelationServiceTest {
         assertEquals("SKIPPED_AFTER_FIELD_PROBE_ERROR",
                 result.supplemental().financialDetails().status());
         verify(shop,never()).orderCorrelationFinancialDetails(anyLong());
+    }
+
+    @Test void expandedThreeFieldProjectionInvestigatesDisagreementsWithoutInferringShipping() {
+        var row=shopRow("9001","158","paid","95.00","pix");
+        row.put("gateway","stone");
+        row.put("subtotal","100.00");
+        row.put("discount","5.00");
+        row.put("discount_gateway","5.00");
+        // shipping_cost_customer intentionally absent: PR051 does not request it.
+        fixtures(List.of(row),List.of(order("or_aaa111","158","PAID",10000)),
+                List.of(charge("ch_aaa111","or_aaa111","PAID","PIX")));
+        when(shop.orderCorrelationFinancialDetails(9001L)).thenReturn(Map.of(
+                "id",9001L,"currency","BRL","total","95.00",
+                "subtotal","100.00","discount","5.00","discount_gateway","5.00"));
+        var result=service.inspect(50,10);
+        assertEquals("EXPANDED",result.investigation().nuvemshopReadMode());
+        assertEquals(1,result.amountsDifferent());
+        assertEquals(Map.of("SUBTOTAL_PRESENT",1,"DISCOUNT_PRESENT",1,
+                "GATEWAY_DISCOUNT_PRESENT",1),
+                result.investigation().mismatchedGrossComponentAvailability());
+        assertEquals(0,result.investigation().grossMismatchesWhereDifferenceEqualsCustomerShipping());
+        assertEquals(0,result.investigation()
+                .grossMismatchesWithConsistentShopSubtotalPlusShippingMinusDiscount());
+        assertTrue(result.supplemental().independentListFieldProbes().isEmpty());
+        var d=result.supplemental().financialDetails();
+        assertEquals("COMPLETE",d.status());
+        assertEquals(1,d.attempted());
+        assertEquals(1,d.comparable());
+        assertEquals(1,d.providerMatchesSubtotal());
+        assertEquals(1,d.deltaEqualsDiscount());
+        assertEquals(0,d.deltaEqualsShipping());
+        assertEquals(0,d.shopSubtotalShippingDiscountIdentity());
+        assertFalse(d.componentsPresent().containsKey("SHIPPING_COST_PRESENT"));
+        verify(shop).orderCorrelationFinancialDetails(9001L);
+        verify(shop,never()).probeCorrelationListField(anyString());
+        assertTrue(result.warnings().contains(
+                "NUVEMSHOP_SHIPPING_COMPONENT_NOT_REQUESTED_OR_VERIFIED"));
+        assertFalse(result.financiallyVerified());
+        assertFalse(result.paymentSettlementVerified());
+        assertFalse(result.ordersMatchedToNuvemshop());
+        assertFalse(result.ordersMatchedToCampaigns());
+    }
+
+    @Test void completePagingIsRequiredBeforeExpandedDetailInspection() {
+        var row=shopRow("9001","158","paid","95.00","pix");
+        when(shop.orderCrossProviderCandidates(1,50)).thenReturn(
+                new NuvemshopPage(List.of(row),1,50,100L,true));
+        when(stone.correlationOrders(1,50)).thenReturn(
+                new StoneHistoryClient.Page<>(List.of(
+                        order("or_aaa111","158","PAID",10000)),1L,false,true));
+        when(stone.charges(1,50)).thenReturn(
+                new StoneHistoryClient.Page<>(List.of(
+                        charge("ch_aaa111","or_aaa111","PAID","PIX")),1L,false,true));
+        var result=service.inspect(50,1);
+        assertFalse(result.nuvemshopOrders().paginationReconciled());
+        assertEquals("SKIPPED_INCOMPLETE_PAGINATION",
+                result.supplemental().financialDetails().status());
+        verify(shop,never()).orderCorrelationFinancialDetails(anyLong());
+        verify(shop,never()).probeCorrelationListField(anyString());
     }
 
 }
