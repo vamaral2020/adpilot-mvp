@@ -386,6 +386,9 @@ public class StoneNuvemCorrelationService {
             warnings.add("NUVEMSHOP_EXPANDED_ORDER_FIELDS_RETURNED_404_BASELINE_SUCCEEDED");
             warnings.add("NUVEMSHOP_FINANCIAL_COMPONENTS_NOT_REQUESTED_AFTER_FALLBACK");
         }
+        // Real PR050 probing indicated this field caused upstream 404 on listing.
+        // Never interpret absent shipping as free shipping or a monetary zero.
+        warnings.add("NUVEMSHOP_SHIPPING_COMPONENT_NOT_REQUESTED_OR_VERIFIED");
         if(unsupported>0) warnings.add("PROVIDER_EXTERNAL_CODES_NOT_CANONICAL_NUMERIC");
         if(ambiguous>0 || collision>0) warnings.add("AMBIGUOUS_OR_DUPLICATE_CORRELATION");
         if(moneyDifferent>0) warnings.add("GROSS_AMOUNT_DISAGREEMENT_ON_CANDIDATES");
@@ -449,29 +452,27 @@ public class StoneNuvemCorrelationService {
                 "DETAIL_ORDER_TOTAL_MAY_HAVE_CHANGED_SINCE_LISTING",
                 "ARITHMETIC_EQUALITY_IS_NOT_CAPTURE_SETTLEMENT_OR_CAUSATION",
                 "NO_ORDER_IDENTIFIERS_OR_INDIVIDUAL_AMOUNTS_IN_REPORT");
-        if(!baseline)
-            return new SupplementalDiagnostics(Map.of(),
-                    emptyDetail("NOT_REQUIRED_EXPANDED_PROJECTION",mismatches.size()),
-                    quality,notes);
         if(!complete)
             return new SupplementalDiagnostics(Map.of(),
                     emptyDetail("SKIPPED_INCOMPLETE_PAGINATION",mismatches.size()),
                     quality,notes);
 
-        // Four independent, first-row-only probes. Baseline + one field;
-        // never binary-search provider payloads or follow untrusted URLs.
-        for(String field:List.of("subtotal","discount","discount_gateway",
-                "shipping_cost_customer")) {
-            String result=nuvem.probeCorrelationListField(field);
-            if(result==null) result="PROBE_UNAVAILABLE";
-            fields.put(field,result);
-            if("UPSTREAM_RATE_LIMIT".equals(result)
-                    || "UPSTREAM_AUTH_ERROR".equals(result)
-                    || "UPSTREAM_OTHER_ERROR".equals(result)
-                    || "LOCAL_READ_FAILURE".equals(result)
-                    || "PROBE_UNAVAILABLE".equals(result)) {
-                // Avoid multiplying upstream errors. Remaining fields stay untested.
-                break;
+        // PR051: expanded 3-field listing may now complete all pages. Read
+        // details of at most five mismatches even then to cross-check their
+        // totals, but probe individual fields only when fallback was required.
+        if(baseline) {
+            for(String field:List.of("subtotal","discount","discount_gateway")) {
+                String result=nuvem.probeCorrelationListField(field);
+                if(result==null) result="PROBE_UNAVAILABLE";
+                fields.put(field,result);
+                if("UPSTREAM_RATE_LIMIT".equals(result)
+                        || "UPSTREAM_AUTH_ERROR".equals(result)
+                        || "UPSTREAM_OTHER_ERROR".equals(result)
+                        || "LOCAL_READ_FAILURE".equals(result)
+                        || "PROBE_UNAVAILABLE".equals(result)) {
+                    // Avoid multiplying upstream errors.
+                    break;
+                }
             }
         }
         if(mismatches.isEmpty())
