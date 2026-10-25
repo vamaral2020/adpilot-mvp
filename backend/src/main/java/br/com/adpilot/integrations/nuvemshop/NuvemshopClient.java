@@ -45,13 +45,14 @@ public class NuvemshopClient {
             List.of("id", "status", "payment_status", "total", "currency");
     // PR042: provider + buyer-reported amounts. No transaction IDs or buyer PII.
     // PR046: limited cross-provider order-code evidence; never fetch customer data.
-    // PR048 adds only documented primitive order totals, not items or payment ledger.
+    // PR051 excludes shipping_cost_customer after PR050 isolated upstream 404.
+    // Never infer shipping as zero when it is absent from the projection.
     private static final String CROSS_PROVIDER_FIELDS =
             "id,number,status,payment_status,total,subtotal,discount,discount_gateway,"
-            + "shipping_cost_customer,currency,created_at,gateway,gateway_name,payment_details";
+            + "currency,created_at,gateway,gateway_name,payment_details";
     private static final List<String> CROSS_PROVIDER_PROJECTION = List.of(
             "id","number","status","payment_status","total","subtotal","discount",
-            "discount_gateway","shipping_cost_customer","currency",
+            "discount_gateway","currency",
             "created_at","gateway","gateway_name","payment_details");
     // PR049: last validated PR047 projection, used only if the expanded PR048
     // order list responds 404. Missing monetary components stay null, never zero.
@@ -61,12 +62,11 @@ public class NuvemshopClient {
             "id","number","status","payment_status","total","currency",
             "created_at","gateway","gateway_name","payment_details");
     private static final List<String> FINANCIAL_COMPONENT_FIELDS = List.of(
-            "subtotal","discount","discount_gateway","shipping_cost_customer");
+            "subtotal","discount","discount_gateway");
     private static final String CORRELATION_DETAIL_FIELDS =
-            "id,total,currency,subtotal,discount,discount_gateway,shipping_cost_customer";
+            "id,total,currency,subtotal,discount,discount_gateway";
     private static final List<String> CORRELATION_DETAIL_PROJECTION = List.of(
-            "id","total","currency","subtotal","discount",
-            "discount_gateway","shipping_cost_customer");
+            "id","total","currency","subtotal","discount","discount_gateway");
     private static final String ORDER_PAYMENT_SIGNALS_FIELDS =
             "id,status,payment_status,total,currency,gateway,gateway_name,"
             + "total_paid_by_customer,total_paid_by_customer_including_fees,payment_details";
