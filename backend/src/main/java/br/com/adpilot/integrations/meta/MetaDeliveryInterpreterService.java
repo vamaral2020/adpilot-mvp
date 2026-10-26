@@ -24,7 +24,7 @@ public class MetaDeliveryInterpreterService {
             String effectiveStatus,String interpretation) {}
     public record Evidence(String level,String id,String adsetId,BigDecimal spend,
             long impressions,long allClicks,Long linkClicks,BigDecimal landingPageViews,
-            BigDecimal addToCarts,BigDecimal attributedPurchases,
+            BigDecimal addToCarts,BigDecimal initiatedCheckouts,BigDecimal attributedPurchases,
             BigDecimal attributedPurchaseValue,String attributionSetting,
             BigDecimal linkCtrPercent,BigDecimal costPerLinkClick,
             BigDecimal attributedCpa,BigDecimal attributedRoas,String evidenceQuality) {}
@@ -180,7 +180,8 @@ public class MetaDeliveryInterpreterService {
                     "1d_click","7d_click","1d_view","1d_click_1d_view",
                     "7d_click_1d_view","7d_click_1d_ev","1d_click_1d_ev"));
             result.add(new Evidence(level,id,set,spend,impressions,allClicks,link,
-                    events.landingPageViews(),events.addToCarts(),purchases,revenue,attr,
+                    events.landingPageViews(),events.addToCarts(),events.initiatedCheckouts(),
+                    purchases,revenue,attr,
                     link==null||impressions==0?null:
                             ratio(BigDecimal.valueOf(link).multiply(BigDecimal.valueOf(100)),
                                     BigDecimal.valueOf(impressions)),
