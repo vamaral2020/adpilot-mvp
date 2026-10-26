@@ -101,7 +101,7 @@ class MetaDeliveryInterpreterServiceTest {
         when(client.deliveryInsights(CAMPAIGN,"adset",SINCE,UNTIL,100,null))
                 .thenReturn(new MetaPage(List.of(Map.of(
                         "campaign_id","999","adset_id","111")),null));
-        assertEquals("META_DELIVERY_INVALID_DATA",
+        assertEquals("META_DELIVERY_IDENTITY_MISMATCH",
                 assertThrows(MetaApiException.class,
                         ()->service.inspect(CAMPAIGN,SINCE,UNTIL,100,3)).errorCode());
     }
