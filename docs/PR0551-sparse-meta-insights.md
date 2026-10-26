@@ -55,14 +55,15 @@ docker compose up -d --build --force-recreate api web
 BASE=http://localhost:18080/api/v1/meta/campaigns/52596120828588
 for endpoint in delivery-diagnostics funnel-diagnostics; do
   curl -sS -u admin \
-    -w '\nHTTP_STATUS=%{http_code}\n' \
-    "$BASE/$endpoint?since=2026-10-18&until=2026-10-25" \
-    | jq -c 'if .code then {code,message} else
+    -o /tmp/adpilot-paused-diagnostic.json \
+    -w 'HTTP_STATUS=%{http_code}\n' \
+    "$BASE/$endpoint?since=2026-10-18&until=2026-10-25"
+  jq -c 'if .code then {code,message} else
       {campaignId,complete,analysisMode,
        adsetInsights:([.adsetInsights[]? |
          {spend,impressions,allClicks,attributedPurchases}]),
        campaign:(.campaign // null),warnings}
-      end'
+      end' /tmp/adpilot-paused-diagnostic.json
 done
 ```
 
