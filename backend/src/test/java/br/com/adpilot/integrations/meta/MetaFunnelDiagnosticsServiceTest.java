@@ -182,4 +182,13 @@ class MetaFunnelDiagnosticsServiceTest {
         assertNull(r.adsets().get(1).spend());
     }
 
+    @Test void zeroPeriodSpendWithDelayedAttributedPurchaseHasUnknownCpa() {
+        var row=evidence("adset","111","111","0",0L,"0","0","0","2");
+        var r=service.analyze(source("OUTCOME_SALES",true,false,List.of(row),List.of()));
+        assertEquals(BigDecimal.ZERO,r.campaign().spend());
+        assertEquals(new BigDecimal("2"),r.campaign().attributedPurchases());
+        assertNull(r.campaign().attributedCpa());
+        assertTrue(r.warnings().contains("ZERO_PERIOD_SPEND_WITH_ATTRIBUTED_PURCHASES"));
+    }
+
 }
