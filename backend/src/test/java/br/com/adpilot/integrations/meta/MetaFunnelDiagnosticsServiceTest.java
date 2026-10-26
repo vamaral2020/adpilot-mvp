@@ -152,4 +152,34 @@ class MetaFunnelDiagnosticsServiceTest {
         verify(interpreter,times(1)).inspect("123",FROM,UNTIL,100,3);
         verifyNoMoreInteractions(interpreter);
     }
+    @Test void aggregatedSparseDeliveryNeverTurnsMissingSpendIntoZeroOrLosesConversions(){
+        var conversionOnly=new MetaDeliveryInterpreterService.Evidence(
+                "adset","111","111",null,null,null,null,
+                null,null,new BigDecimal("3"),new BigDecimal("2"),null,
+                "UNKNOWN",null,null,null,null,"DELIVERY_METRICS_UNAVAILABLE");
+        var r=service.analyze(source("OUTCOME_SALES",true,false,
+                List.of(conversionOnly),List.of()));
+        assertNull(r.campaign().spend());
+        assertNull(r.campaign().impressions());
+        assertNull(r.campaign().allClicks());
+        assertEquals(new BigDecimal("2"),r.campaign().attributedPurchases());
+        assertEquals(new BigDecimal("3"),r.campaign().initiatedCheckouts());
+        assertNull(r.campaign().attributedCpa());
+        assertNull(r.campaign().costPerInitiatedCheckout());
+        assertTrue(r.campaign().warnings().contains("SPEND_UNAVAILABLE_NOT_ZERO"));
+        assertTrue(r.warnings().contains("DELIVERY_METRICS_UNAVAILABLE_NOT_ZERO"));
+    }
+
+    @Test void oneMissingSpendInTwoSetsMakesCampaignSpendUnknownButKeepsValidLocalValue(){
+        var a=evidence("adset","111","111","10",30L,"20","5","2","1");
+        var b=evidence("adset","222","222",null,30L,"15","2","1","1");
+        var r=service.analyze(source("OUTCOME_SALES",true,false,List.of(a,b),List.of()));
+        assertNull(r.campaign().spend());
+        assertEquals(2000L,r.campaign().impressions());
+        assertEquals(new BigDecimal("2"),r.campaign().attributedPurchases());
+        assertNull(r.campaign().attributedCpa());
+        assertEquals(new BigDecimal("10"),r.adsets().getFirst().spend());
+        assertNull(r.adsets().get(1).spend());
+    }
+
 }
