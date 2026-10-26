@@ -200,6 +200,7 @@ class MetaDeliveryInterpreterServiceTest {
         assertEquals("2",signals.attributedPurchases().toPlainString());
         assertNull(signals.attributedCpa());
         assertNull(signals.attributedRoas());
+        assertTrue(result.warnings().contains("ZERO_REPORTED_SPEND_WITH_ATTRIBUTED_PURCHASES"));
     }
 
     @Test void missingEntityIdHasSafeSpecific502WithoutRawProviderPayload() {
