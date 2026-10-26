@@ -155,4 +155,63 @@ class MetaDeliveryInterpreterServiceTest {
                 eq(tomorrow),eq(tomorrow),anyInt(),any());
     }
 
+    @Test void conversionOnlyRowsKeepPurchasesWithoutInventingZeroSpendOrImpressions() {
+        var conversions=List.of(
+                Map.of("action_type","purchase","value","2"),
+                Map.of("action_type","omni_purchase","value","2"),
+                Map.of("action_type","initiate_checkout","value","3"));
+        when(client.deliveryInsights(CAMPAIGN,"adset",SINCE,UNTIL,100,null))
+                .thenReturn(new MetaPage(List.of(Map.of(
+                        "campaign_id",CAMPAIGN,"adset_id","111",
+                        "actions",conversions,
+                        "action_values",List.of(Map.of(
+                                "action_type","purchase","value","497.00")))),null));
+        when(client.deliveryInsights(CAMPAIGN,"ad",SINCE,UNTIL,100,null))
+                .thenReturn(new MetaPage(List.of(Map.of(
+                        "campaign_id",CAMPAIGN,"adset_id","111","ad_id","555",
+                        "actions",conversions)),null));
+        var result=service.inspect(CAMPAIGN,SINCE,UNTIL,100,3);
+        assertTrue(result.complete());
+        var signals=result.adsetInsights().getFirst();
+        assertNull(signals.spend());
+        assertNull(signals.impressions());
+        assertNull(signals.allClicks());
+        assertNull(signals.linkClicks());
+        assertNull(signals.attributedRoas());
+        assertNull(signals.attributedCpa());
+        assertEquals("2",signals.attributedPurchases().toPlainString());
+        assertEquals("3",signals.initiatedCheckouts().toPlainString());
+        assertEquals("497.00",signals.attributedPurchaseValue().toPlainString());
+        assertEquals("DELIVERY_METRICS_UNAVAILABLE",signals.evidenceQuality());
+        assertTrue(result.warnings().contains("META_DELIVERY_METRICS_MISSING_NOT_ZERO"));
+    }
+
+    @Test void explicitZeroDeliveryNumbersStayZeroWithoutAssumingMissing() {
+        when(client.deliveryInsights(CAMPAIGN,"adset",SINCE,UNTIL,100,null))
+                .thenReturn(new MetaPage(List.of(Map.of(
+                        "campaign_id",CAMPAIGN,"adset_id","111","spend","0",
+                        "impressions","0","clicks","0","inline_link_clicks","0",
+                        "actions",List.of(Map.of("action_type","purchase","value","2")))),null));
+        var result=service.inspect(CAMPAIGN,SINCE,UNTIL,100,3);
+        var signals=result.adsetInsights().getFirst();
+        assertEquals("0",signals.spend().toPlainString());
+        assertEquals(0L,signals.impressions());
+        assertEquals(0L,signals.allClicks());
+        assertEquals("2",signals.attributedPurchases().toPlainString());
+        assertNull(signals.attributedCpa());
+        assertNull(signals.attributedRoas());
+    }
+
+    @Test void missingEntityIdHasSafeSpecific502WithoutRawProviderPayload() {
+        when(client.deliveryInsights(CAMPAIGN,"ad",SINCE,UNTIL,100,null))
+                .thenReturn(new MetaPage(List.of(Map.of(
+                        "campaign_id",CAMPAIGN,"adset_id","111","spend","0",
+                        "impressions","0","clicks","0")),null));
+        var failure=assertThrows(MetaApiException.class,
+                ()->service.inspect(CAMPAIGN,SINCE,UNTIL,100,3));
+        assertEquals("META_DELIVERY_ENTITY_ID_MISSING",failure.errorCode());
+        assertEquals(502,failure.status().value());
+        assertFalse(failure.getMessage().contains("111"));
+    }
+
 }
