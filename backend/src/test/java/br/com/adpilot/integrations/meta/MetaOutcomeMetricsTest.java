@@ -50,4 +50,28 @@ class MetaOutcomeMetricsTest {
                 () -> MetaOutcomeMetrics.fromRow(Map.of("actions",List.of(
                         action("post_engagement","not-a-number"))))).errorCode());
     }
+    @Test void checkoutCanonicalPrecedesAliasesWithoutDoubleCounting() {
+        var result=MetaOutcomeMetrics.fromRow(Map.of("actions",List.of(
+                action("initiate_checkout","4"),
+                action("omni_initiated_checkout","4"),
+                action("offsite_conversion.fb_pixel_initiate_checkout","4"))));
+        assertEquals(new BigDecimal("4"),result.initiatedCheckouts());
+    }
+
+    @Test void checkoutAliasAndExplicitZeroArePreservedAndMissingIsNull() {
+        assertEquals(new BigDecimal("2"),MetaOutcomeMetrics.fromRow(Map.of(
+                "actions",List.of(action("offsite_conversion.fb_pixel_initiate_checkout","2"))
+                )).initiatedCheckouts());
+        assertEquals(BigDecimal.ZERO,MetaOutcomeMetrics.fromRow(Map.of(
+                "actions",List.of(action("initiate_checkout","0")))).initiatedCheckouts());
+        assertNull(MetaOutcomeMetrics.fromRow(Map.of("actions",List.of(
+                action("landing_page_view","5")))).initiatedCheckouts());
+    }
+
+    @Test void malformedCheckoutCountIsRejected() {
+        assertEquals("META_INVALID_METRICS",assertThrows(MetaApiException.class,
+                ()->MetaOutcomeMetrics.fromRow(Map.of("actions",List.of(
+                        action("initiate_checkout","-1"))))).errorCode());
+    }
+
 }
