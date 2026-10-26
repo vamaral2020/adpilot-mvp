@@ -20,7 +20,7 @@ class MetaFunnelDiagnosticsServiceTest {
             String level,String id,String set,String spend,Long link,
             String visits,String carts,String checkouts,String purchase) {
         return new MetaDeliveryInterpreterService.Evidence(
-                level,id,set,d(spend),1000,100,link,
+                level,id,set,d(spend),1000L,100L,link,
                 d(visits),d(carts),d(checkouts),d(purchase),null,
                 "UNKNOWN",null,null,null,null,
                 purchase==null?"PURCHASE_ACTION_UNAVAILABLE":"ATTRIBUTED_SIGNALS_OBSERVED");
