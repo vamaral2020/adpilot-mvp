@@ -23,7 +23,7 @@ public class MetaDeliveryInterpreterService {
             String billingEvent,String bidStrategy,String destinationType,
             String effectiveStatus,String interpretation) {}
     public record Evidence(String level,String id,String adsetId,BigDecimal spend,
-            long impressions,long allClicks,Long linkClicks,BigDecimal landingPageViews,
+            Long impressions,Long allClicks,Long linkClicks,BigDecimal landingPageViews,
             BigDecimal addToCarts,BigDecimal initiatedCheckouts,BigDecimal attributedPurchases,
             BigDecimal attributedPurchaseValue,String attributionSetting,
             BigDecimal linkCtrPercent,BigDecimal costPerLinkClick,
@@ -113,6 +113,9 @@ public class MetaDeliveryInterpreterService {
         if(configurations.stream().anyMatch(a->
                 "REVIEW_SALES_OPTIMIZATION".equals(a.interpretation())))
             warnings.add("SALES_CAMPAIGN_USING_TRAFFIC_OR_REACH_GOAL");
+        if(adsetSignals.stream().anyMatch(MetaDeliveryInterpreterService::missingCoreMetrics)
+                ||adSignals.stream().anyMatch(MetaDeliveryInterpreterService::missingCoreMetrics))
+            warnings.add("META_DELIVERY_METRICS_MISSING_NOT_ZERO");
         if(adsetSignals.stream().anyMatch(a->"UNKNOWN".equals(a.attributionSetting()))
                 ||adSignals.stream().anyMatch(a->"UNKNOWN".equals(a.attributionSetting())))
             warnings.add("ATTRIBUTION_SETTING_UNKNOWN");
@@ -142,7 +145,19 @@ public class MetaDeliveryInterpreterService {
                     ||page.data().isEmpty()&&page.after()!=null) throw invalid();
             for(var row:page.data()) {
                 if(row==null||!campaignId.equals(String.valueOf(row.get("campaign_id"))))
-                    throw invalid();
+                    throw new MetaApiException(HttpStatus.BAD_GATEWAY,
+                            "META_DELIVERY_IDENTITY_MISMATCH",
+                            "Linha Meta com identificador de campanha ausente ou divergente.");
+                String idField=switch(level) {
+                    case "config" -> "id";
+                    case "adset" -> "adset_id";
+                    case "ad" -> "ad_id";
+                    default -> throw invalid();
+                };
+                if(row.get(idField)==null)
+                    throw new MetaApiException(HttpStatus.BAD_GATEWAY,
+                            "META_DELIVERY_ENTITY_ID_MISSING",
+                            "Linha Meta sem identificador obrigatorio para o nivel.");
                 String key=switch(level) {
                     case "config" -> identifier(row.get("id"));
                     case "adset" -> identifier(row.get("adset_id"));
@@ -166,10 +181,12 @@ public class MetaDeliveryInterpreterService {
         for(var row:rows.data()) {
             String set=identifier(row.get("adset_id"));
             String id="ad".equals(level)?identifier(row.get("ad_id")):set;
-            BigDecimal spend=decimal(row.get("spend"));
-            long impressions=count(row.get("impressions"));
-            long allClicks=count(row.get("clicks"));
-            Long link=row.get("inline_link_clicks")==null?null:count(row.get("inline_link_clicks"));
+            // Meta may omit delivery metrics for conversion-only rows in
+            // paused campaigns. Unknown is NOT a reported numerical zero.
+            BigDecimal spend=optionalDecimal(row.get("spend"));
+            Long impressions=optionalCount(row.get("impressions"));
+            Long allClicks=optionalCount(row.get("clicks"));
+            Long link=optionalCount(row.get("inline_link_clicks"));
             Map<String,BigDecimal> actionCounts=MetaPurchaseAuditService.extract(row.get("actions"));
             Map<String,BigDecimal> actionValues=MetaPurchaseAuditService.extract(
                     row.get("action_values"));
@@ -182,19 +199,36 @@ public class MetaDeliveryInterpreterService {
             result.add(new Evidence(level,id,set,spend,impressions,allClicks,link,
                     events.landingPageViews(),events.addToCarts(),events.initiatedCheckouts(),
                     purchases,revenue,attr,
-                    link==null||impressions==0?null:
+                    link==null||impressions==null||impressions==0?null:
                             ratio(BigDecimal.valueOf(link).multiply(BigDecimal.valueOf(100)),
                                     BigDecimal.valueOf(impressions)),
-                    link==null||link==0?null:ratio(spend,BigDecimal.valueOf(link)),
-                    purchases==null||purchases.signum()==0?null:ratio(spend,purchases),
-                    revenue==null||spend.signum()==0?null:ratio(revenue,spend),
-                    purchases==null?"PURCHASE_ACTION_UNAVAILABLE"
+                    spend==null||link==null||link==0?null:
+                            ratio(spend,BigDecimal.valueOf(link)),
+                    spend==null||purchases==null||purchases.signum()==0?null:
+                            ratio(spend,purchases),
+                    spend==null||revenue==null||spend.signum()==0?null:
+                            ratio(revenue,spend),
+                    missingCoreMetrics(spend,impressions,allClicks)
+                            ?"DELIVERY_METRICS_UNAVAILABLE"
+                            :purchases==null?"PURCHASE_ACTION_UNAVAILABLE"
                             :purchases.compareTo(BigDecimal.valueOf(5))<0
                             ?"SMALL_ATTRIBUTED_PURCHASE_SAMPLE":"ATTRIBUTED_SIGNALS_OBSERVED"));
         }
         return List.copyOf(result);
     }
 
+    private static boolean missingCoreMetrics(Evidence e) {
+        return missingCoreMetrics(e.spend(),e.impressions(),e.allClicks());
+    }
+    private static boolean missingCoreMetrics(BigDecimal spend,Long impressions,Long allClicks) {
+        return spend==null||impressions==null||allClicks==null;
+    }
+    private static BigDecimal optionalDecimal(Object value) {
+        return value==null?null:decimal(value);
+    }
+    private static Long optionalCount(Object value) {
+        return value==null?null:count(value);
+    }
     private static BigDecimal preferredPurchase(Map<String,BigDecimal> values) {
         for(String key:MetaPurchaseAuditService.PURCHASE_TYPES)
             if(values.containsKey(key)) return values.get(key);
