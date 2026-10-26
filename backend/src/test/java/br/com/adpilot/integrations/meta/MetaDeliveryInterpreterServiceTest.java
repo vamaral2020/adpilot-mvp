@@ -119,4 +119,37 @@ class MetaDeliveryInterpreterServiceTest {
         assertEquals("PURCHASE_ACTION_UNAVAILABLE",ad.evidenceQuality());
         assertNull(ad.attributedPurchases());
     }
+    @Test void todayIsReadOnlyMonitoringEvenWhenAllMetaPagesWereRead() {
+        LocalDate today=LocalDate.now(java.time.ZoneOffset.UTC);
+        when(client.deliveryInsights(CAMPAIGN,"adset",today,today,100,null))
+                .thenReturn(new MetaPage(List.of(Map.of(
+                        "campaign_id",CAMPAIGN,"adset_id","111",
+                        "spend","1.00","impressions","100","clicks","4")),null));
+        when(client.deliveryInsights(CAMPAIGN,"ad",today,today,100,null))
+                .thenReturn(new MetaPage(List.of(Map.of(
+                        "campaign_id",CAMPAIGN,"adset_id","111","ad_id","555",
+                        "spend","1.00","impressions","100","clicks","4")),null));
+        var result=service.inspect(CAMPAIGN,today,today,100,3);
+        assertTrue(result.complete(),"Pagination may be complete without final daily numbers");
+        assertTrue(result.partialCurrentDay());
+        assertEquals("CURRENT_DAY_MONITORING",result.analysisMode());
+        assertTrue(result.warnings().contains("PARTIAL_CURRENT_DAY"));
+        assertTrue(result.warnings().contains(
+                "INTRADAY_METRICS_ARE_PROVISIONAL_NO_BUDGET_DECISIONS"));
+        assertEquals("PURCHASE_ACTION_UNAVAILABLE",
+                result.adsetInsights().getFirst().evidenceQuality());
+    }
+
+    @Test void historicalPeriodDoesNotClaimCurrentDayAndTomorrowIsRejected() {
+        var historical=service.inspect(CAMPAIGN,SINCE,UNTIL,100,3);
+        assertFalse(historical.partialCurrentDay());
+        assertEquals("HISTORICAL_CONTEXT",historical.analysisMode());
+        assertFalse(historical.warnings().contains("PARTIAL_CURRENT_DAY"));
+        LocalDate tomorrow=LocalDate.now(java.time.ZoneOffset.UTC).plusDays(1);
+        assertEquals("INVALID_DATE_RANGE",assertThrows(MetaApiException.class,
+                ()->service.inspect(CAMPAIGN,tomorrow,tomorrow,100,3)).errorCode());
+        verify(client,never()).deliveryInsights(eq(CAMPAIGN),eq("ad"),
+                eq(tomorrow),eq(tomorrow),anyInt(),any());
+    }
+
 }
