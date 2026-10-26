@@ -113,6 +113,9 @@ public class MetaDeliveryInterpreterService {
         if(configurations.stream().anyMatch(a->
                 "REVIEW_SALES_OPTIMIZATION".equals(a.interpretation())))
             warnings.add("SALES_CAMPAIGN_USING_TRAFFIC_OR_REACH_GOAL");
+        if(adsetSignals.stream().anyMatch(e->zeroSpendWithPurchases(e))
+                ||adSignals.stream().anyMatch(e->zeroSpendWithPurchases(e)))
+            warnings.add("ZERO_REPORTED_SPEND_WITH_ATTRIBUTED_PURCHASES");
         if(adsetSignals.stream().anyMatch(MetaDeliveryInterpreterService::missingCoreMetrics)
                 ||adSignals.stream().anyMatch(MetaDeliveryInterpreterService::missingCoreMetrics))
             warnings.add("META_DELIVERY_METRICS_MISSING_NOT_ZERO");
@@ -202,9 +205,9 @@ public class MetaDeliveryInterpreterService {
                     link==null||impressions==null||impressions==0?null:
                             ratio(BigDecimal.valueOf(link).multiply(BigDecimal.valueOf(100)),
                                     BigDecimal.valueOf(impressions)),
-                    spend==null||link==null||link==0?null:
+                    spend==null||spend.signum()==0||link==null||link==0?null:
                             ratio(spend,BigDecimal.valueOf(link)),
-                    spend==null||purchases==null||purchases.signum()==0?null:
+                    spend==null||spend.signum()==0||purchases==null||purchases.signum()==0?null:
                             ratio(spend,purchases),
                     spend==null||revenue==null||spend.signum()==0?null:
                             ratio(revenue,spend),
@@ -217,6 +220,11 @@ public class MetaDeliveryInterpreterService {
         return List.copyOf(result);
     }
 
+    private static boolean zeroSpendWithPurchases(Evidence e) {
+        return e.spend()!=null&&e.spend().signum()==0
+                &&e.attributedPurchases()!=null
+                &&e.attributedPurchases().signum()>0;
+    }
     private static boolean missingCoreMetrics(Evidence e) {
         return missingCoreMetrics(e.spend(),e.impressions(),e.allClicks());
     }
