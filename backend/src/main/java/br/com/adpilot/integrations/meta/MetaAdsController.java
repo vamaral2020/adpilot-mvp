@@ -20,12 +20,15 @@ public class MetaAdsController {
     private final MetaPurchaseAuditService purchaseAudit;
     private final MetaFormatService formatService;
     private final MetaDeliveryInterpreterService interpreter;
+    private final MetaFunnelDiagnosticsService funnelDiagnostics;
 
     public MetaAdsController(MetaSettings settings, MetaAdsClient client,
                              MetaInsightsSummaryService summaryService,
                              MetaPurchaseAuditService purchaseAudit,
                              MetaFormatService formatService,
-                             MetaDeliveryInterpreterService interpreter) {
+                             MetaDeliveryInterpreterService interpreter,
+                             MetaFunnelDiagnosticsService funnelDiagnostics) {
+        this.funnelDiagnostics=funnelDiagnostics;
         this.interpreter=interpreter;
         this.settings = settings;
         this.client = client;
@@ -35,8 +38,8 @@ public class MetaAdsController {
     }
 
     /**
-     * PR053: on-demand interpretation only, no persistence or Meta ad changes.
-     * Date range excludes today to avoid silently comparing incomplete days.
+     * PR053/054: on-demand interpretation only, no persistence or Meta ad changes.
+     * The current day is allowed but explicitly marked as provisional.
      */
     @GetMapping("/campaigns/{campaignId}/delivery-diagnostics")
     public ResponseEntity<MetaDeliveryInterpreterService.Report> deliveryDiagnostics(
@@ -47,6 +50,21 @@ public class MetaAdsController {
             @RequestParam(defaultValue="3") int maxPages) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(interpreter.inspect(campaignId,since,until,pageSize,maxPages));
+    }
+
+    /**
+     * PR055: derived, read-only event funnel. One bounded delivery lookup;
+     * no extra Graph requests, persistence, or store-to-ad attribution.
+     */
+    @GetMapping("/campaigns/{campaignId}/funnel-diagnostics")
+    public ResponseEntity<MetaFunnelDiagnosticsService.Report> funnelDiagnostics(
+            @PathVariable String campaignId,
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate since,
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate until,
+            @RequestParam(defaultValue="100") int pageSize,
+            @RequestParam(defaultValue="3") int maxPages) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(funnelDiagnostics.inspect(campaignId,since,until,pageSize,maxPages));
     }
 
     @GetMapping("/campaigns/{campaignId}/formats")
