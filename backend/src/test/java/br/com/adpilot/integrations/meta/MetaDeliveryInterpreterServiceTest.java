@@ -34,7 +34,9 @@ class MetaDeliveryInterpreterServiceTest {
                                 Map.of("action_type","purchase","value","3"),
                                 Map.of("action_type","omni_purchase","value","3"),
                                 Map.of("action_type","landing_page_view","value","70"),
-                                Map.of("action_type","add_to_cart","value","10")),
+                                Map.of("action_type","add_to_cart","value","10"),
+                                Map.of("action_type","initiate_checkout","value","4"),
+                                Map.of("action_type","omni_initiated_checkout","value","4")),
                         "action_values",List.of(
                                 Map.of("action_type","purchase","value","300.00"),
                                 Map.of("action_type","omni_purchase","value","300.00")),
@@ -59,6 +61,7 @@ class MetaDeliveryInterpreterServiceTest {
         assertEquals("3",e.attributedPurchases().toPlainString());
         assertEquals("70",e.landingPageViews().toPlainString());
         assertEquals("10",e.addToCarts().toPlainString());
+        assertEquals("4",e.initiatedCheckouts().toPlainString());
         assertEquals("3.3333",e.attributedRoas().toPlainString());
         assertEquals("3.3333",e.linkCtrPercent().toPlainString());
         assertEquals("30.0000",e.attributedCpa().toPlainString());

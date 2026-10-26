@@ -12,7 +12,8 @@ import org.springframework.http.HttpStatus;
  * Aliases represent the same event and must never be added together.
  */
 public record MetaOutcomeMetrics(BigDecimal linkClicks, BigDecimal landingPageViews,
-        BigDecimal postEngagements, BigDecimal addToCarts) {
+        BigDecimal postEngagements, BigDecimal addToCarts,
+        BigDecimal initiatedCheckouts) {
 
     public static MetaOutcomeMetrics fromRow(Map<String, Object> insight) {
         Object actions=insight.get("actions");
@@ -21,7 +22,11 @@ public record MetaOutcomeMetrics(BigDecimal linkClicks, BigDecimal landingPageVi
                 preferred(actions, "landing_page_view", "omni_landing_page_view"),
                 preferred(actions, "post_engagement"),
                 preferred(actions, "add_to_cart", "omni_add_to_cart",
-                        "offsite_conversion.fb_pixel_add_to_cart"));
+                        "offsite_conversion.fb_pixel_add_to_cart"),
+                // Aliases describe the same event; select one, never sum them.
+                preferred(actions, "initiate_checkout", "omni_initiated_checkout",
+                        "offsite_conversion.fb_pixel_initiate_checkout",
+                        "offsite_conversion.initiate_checkout"));
     }
 
     private static BigDecimal preferred(Object raw, String... alternatives) {
