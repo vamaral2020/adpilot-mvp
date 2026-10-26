@@ -71,6 +71,8 @@ public class MetaFunnelDiagnosticsService {
         if(source.adsetInsights().stream().anyMatch(e->
                 "UNKNOWN".equals(e.attributionSetting())))
             warnings.add("ATTRIBUTION_SETTING_UNKNOWN");
+        if(campaign.spend()==null||campaign.impressions()==null||campaign.allClicks()==null)
+            warnings.add("DELIVERY_METRICS_UNAVAILABLE_NOT_ZERO");
         if(campaign.attributedPurchases()==null)
             warnings.add("PURCHASE_ACTION_UNAVAILABLE_NOT_ZERO");
         if(campaign.initiatedCheckouts()==null)
@@ -148,16 +150,10 @@ public class MetaFunnelDiagnosticsService {
         BigDecimal spend=null;
         Long impressions=null,allClicks=null,linkClicks=null;
         if(!rows.isEmpty()) {
-            spend=BigDecimal.ZERO; impressions=0L;allClicks=0L;
-            for(var e:rows) {
-                spend=spend.add(e.spend());
-                impressions=Math.addExact(impressions,e.impressions());
-                allClicks=Math.addExact(allClicks,e.allClicks());
-            }
-            if(rows.stream().allMatch(e->e.linkClicks()!=null)) {
-                linkClicks=0L;
-                for(var e:rows) linkClicks=Math.addExact(linkClicks,e.linkClicks());
-            }
+            spend=sumOptional(rows,MetaDeliveryInterpreterService.Evidence::spend);
+            impressions=sumOptionalLong(rows,MetaDeliveryInterpreterService.Evidence::impressions);
+            allClicks=sumOptionalLong(rows,MetaDeliveryInterpreterService.Evidence::allClicks);
+            linkClicks=sumOptionalLong(rows,MetaDeliveryInterpreterService.Evidence::linkClicks);
         }
         var lpv=sumOptional(rows,MetaDeliveryInterpreterService.Evidence::landingPageViews);
         var carts=sumOptional(rows,MetaDeliveryInterpreterService.Evidence::addToCarts);
@@ -165,6 +161,9 @@ public class MetaFunnelDiagnosticsService {
         var purchases=sumOptional(rows,MetaDeliveryInterpreterService.Evidence::attributedPurchases);
         var alerts=new ArrayList<String>();
         if(rows.isEmpty()) alerts.add("NO_INSIGHT_ROWS_NOT_ZERO");
+        if(spend==null) alerts.add("SPEND_UNAVAILABLE_NOT_ZERO");
+        if(impressions==null) alerts.add("IMPRESSIONS_UNAVAILABLE_NOT_ZERO");
+        if(allClicks==null) alerts.add("ALL_CLICKS_UNAVAILABLE_NOT_ZERO");
         if(linkClicks==null) alerts.add("LINK_CLICKS_UNAVAILABLE");
         if(lpv==null) alerts.add("LANDING_PAGE_VIEWS_UNAVAILABLE");
         if(carts==null) alerts.add("ADD_TO_CART_UNAVAILABLE");
@@ -194,6 +193,18 @@ public class MetaFunnelDiagnosticsService {
     private static BigDecimal divided(BigDecimal numerator,BigDecimal denominator) {
         if(numerator==null||denominator==null||denominator.signum()==0)return null;
         return numerator.divide(denominator,4,RoundingMode.HALF_UP);
+    }
+    private static Long sumOptionalLong(
+            List<MetaDeliveryInterpreterService.Evidence> rows,
+            Function<MetaDeliveryInterpreterService.Evidence,Long> field) {
+        if(rows.isEmpty()) return null;
+        long sum=0;
+        for(var row:rows) {
+            Long value=field.apply(row);
+            if(value==null)return null;
+            sum=Math.addExact(sum,value);
+        }
+        return sum;
     }
     private static BigDecimal sumOptional(
             List<MetaDeliveryInterpreterService.Evidence> rows,
