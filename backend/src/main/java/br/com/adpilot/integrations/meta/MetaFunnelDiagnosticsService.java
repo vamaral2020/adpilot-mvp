@@ -73,6 +73,10 @@ public class MetaFunnelDiagnosticsService {
             warnings.add("ATTRIBUTION_SETTING_UNKNOWN");
         if(campaign.spend()==null||campaign.impressions()==null||campaign.allClicks()==null)
             warnings.add("DELIVERY_METRICS_UNAVAILABLE_NOT_ZERO");
+        if(campaign.spend()!=null&&campaign.spend().signum()==0
+                &&campaign.attributedPurchases()!=null
+                &&campaign.attributedPurchases().signum()>0)
+            warnings.add("ZERO_PERIOD_SPEND_WITH_ATTRIBUTED_PURCHASES");
         if(campaign.attributedPurchases()==null)
             warnings.add("PURCHASE_ACTION_UNAVAILABLE_NOT_ZERO");
         if(campaign.initiatedCheckouts()==null)
@@ -191,7 +195,8 @@ public class MetaFunnelDiagnosticsService {
                 .divide(denominator,4,RoundingMode.HALF_UP);
     }
     private static BigDecimal divided(BigDecimal numerator,BigDecimal denominator) {
-        if(numerator==null||denominator==null||denominator.signum()==0)return null;
+        if(numerator==null||numerator.signum()==0
+                ||denominator==null||denominator.signum()==0)return null;
         return numerator.divide(denominator,4,RoundingMode.HALF_UP);
     }
     private static Long sumOptionalLong(
