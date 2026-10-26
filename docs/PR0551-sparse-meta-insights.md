@@ -20,7 +20,11 @@ local validation.
 - The delivery interpreter no longer rejects an Insight merely because
   one of `spend`, `impressions` or `clicks` is absent: these become
   Java null, not numeric zero.
-- Explicit Meta values `0` remain zero. Numeric invalid values,
+- Explicit Meta values `0` remain zero; when an attribution window
+  contains zero spend but attributed Purchase > 0, we intentionally
+  withhold CPA and cost ratios (null), rather than claiming free sales.
+  A warning explains the attribution/spend mismatch.
+- Numeric invalid values,
   duplicate rows, foreign campaign data and invalid IDs still fail
   closed with HTTP 502.
 - Ratios depending on missing metrics become `null`, not invented
