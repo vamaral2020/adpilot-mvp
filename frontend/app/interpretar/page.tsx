@@ -193,11 +193,13 @@ function InterpreterReport({report:r,funnel}:{
       ANÁLISE HISTÓRICA — período de dias anteriores, mas os eventos atribuídos
       ainda podem ser revisados pela Meta. Dados não demonstram lucro ou causalidade.
     </p>}
-    <section className="historySummary">
-      <h2>Configuração observada</h2>
-      <p>Objetivo: <strong>{objectives[r.campaignObjective]??"Não informado"}</strong>
-        {" · "}Moeda: <strong>{r.currency}</strong>
-        {" · "}Status: {r.campaignStatus}</p>
+    <section className="historySummary interpretContext" aria-label="Campanha analisada">
+      <div className="interpretContextMain">
+        <span className="smallEyebrow">CAMPANHA ANALISADA</span>
+        <strong>{objectives[r.campaignObjective]??"Objetivo não informado"}</strong>
+        <span className="interpretContextTag">{r.campaignStatus}</span>
+        <span>Moeda: {r.currency}</span>
+      </div>
       <p>Conjuntos: {r.adsets.length} · Insights de conjuntos: {r.adsetInsights.length}
         {" · "}Insights de anúncios: {r.adInsights.length}</p>
     </section>
@@ -205,7 +207,10 @@ function InterpreterReport({report:r,funnel}:{
       Relatório parcial: o limite de paginação foi atingido. Não use as linhas
       abaixo para ranquear todas as peças ou distribuir orçamento.</p>}
     {funnel&&<FunnelPanel report={funnel}/>}
-    <section className="historySummary">
+    <details className="interpretAdvanced" aria-label="Configuração técnica e tabelas detalhadas">
+      <summary>Ver configuração técnica e tabelas completas de Insights</summary>
+      <div className="interpretAdvancedBody">
+      <section className="historySummary">
       <h2>O que a configuração sugere verificar</h2>
       {r.adsets.length===0?<p>Sem conjuntos retornados.</p>:
         r.adsets.map(a=><article key={a.id} style={{marginBottom:"1rem"}}>
@@ -227,5 +232,7 @@ function InterpreterReport({report:r,funnel}:{
         <ul>{r.warnings.map(w=><li key={w}><code>{w}</code></li>)}</ul>
       </details>
     </section>
+      </div>
+    </details>
   </>;
 }
