@@ -1,6 +1,9 @@
 import Link from "next/link";
 import {money, number} from "../../lib/dashboard";
 import {interpreterPeriod, utcToday} from "../../lib/interpreter-period";
+import type {FunnelReport} from "../../lib/funnel-diagnostics";
+import {FunnelPanel} from "./funnel-panel";
+import "./funnel.css";
 
 export const dynamic="force-dynamic";
 
@@ -12,7 +15,7 @@ type Adset={id:string;name:string|null;optimizationGoal:string;promotedEvent:str
   effectiveStatus:string;interpretation:string};
 type Evidence={level:string;id:string;adsetId:string;spend:number|null;impressions:number|null;
   allClicks:number|null;linkClicks:number|null;landingPageViews:number|null;
-  addToCarts:number|null;attributedPurchases:number|null;
+  addToCarts:number|null;initiatedCheckouts:number|null;attributedPurchases:number|null;
   attributedPurchaseValue:number|null;attributionSetting:string;
   linkCtrPercent:number|null;costPerLinkClick:number|null;
   attributedCpa:number|null;attributedRoas:number|null;evidenceQuality:string};
@@ -71,12 +74,14 @@ function pastSevenDays():{since:string;until:string} {
         <table>
           <thead><tr><th>ID</th><th>Gasto</th><th>Cliques totais</th>
             <th>Cliques no link</th><th>Visitas destino</th><th>Carrinhos</th>
-            <th>Compras atribuídas</th><th>CPA atribuído</th><th>ROAS atribuído</th>
+            <th>Checkouts iniciados</th><th>Compras atribuídas</th>
+            <th>CPA atribuído</th><th>ROAS atribuído</th>
             <th>Atribuição</th></tr></thead>
           <tbody>{rows.map(r=><tr key={r.id}>
             <td>{r.id}</td><td>{moneyValue(r.spend,currency)}</td>
             <td>{fmt(r.allClicks,0)}</td><td>{fmt(r.linkClicks,0)}</td>
             <td>{fmt(r.landingPageViews,0)}</td><td>{fmt(r.addToCarts,0)}</td>
+            <td>{fmt(r.initiatedCheckouts,0)}</td>
             <td>{fmt(r.attributedPurchases,0)}</td>
             <td>{moneyValue(r.attributedCpa,currency)}</td>
             <td>{r.attributedRoas===null?"Não informado":fmt(r.attributedRoas)+"x"}</td>
@@ -99,10 +104,20 @@ export default async function InterpreterPage({searchParams}:{searchParams:Promi
   const listing=await read<Page>("/api/v1/meta/campaigns?limit=100");
   const campaigns=listing.data?.data??[];
   const exists=campaigns.some(c=>c.id===campaignId);
-  const report=campaignId&&valid&&exists
-    ?await read<Report>("/api/v1/meta/campaigns/"+campaignId+
-        "/delivery-diagnostics?"+new URLSearchParams({since,until}).toString())
-    :null;
+  const selected=Boolean(campaignId&&valid&&exists);
+  const query=selected?"/api/v1/meta/campaigns/"+campaignId+
+    "/":null;
+  const windowQuery=new URLSearchParams({since,until}).toString();
+  // Independent read-only reports; a funnel failure must not hide delivery data.
+  const [report,funnel]=query?await Promise.all([
+    read<Report>(query+"delivery-diagnostics?"+windowQuery),
+    read<FunnelReport>(query+"funnel-diagnostics?"+windowQuery),
+  ]):[null,null];
+  const funnelConsistent=Boolean(funnel?.data
+    &&funnel.data.campaignId===campaignId
+    &&funnel.data.since===since&&funnel.data.until===until);
+  const funnelError=funnel?.data&&!funnelConsistent
+    ?"A Meta retornou um funil de campanha ou período diferente. Os dados foram ocultados.":null;
   return <main className="historyShell">
     <nav className="historyNav"><Link href="/">← Visão geral</Link>
       <strong>AdPilot / Intérprete Meta</strong></nav>
@@ -148,7 +163,14 @@ export default async function InterpreterPage({searchParams}:{searchParams:Promi
     {listing.data?.after&&<p className="alertBanner caution">
       Há mais campanhas além das primeiras 100. A lista é parcial.</p>}
     {report?.error&&<p className="alertBanner error">{report.error}</p>}
-    {report?.data&&<InterpreterReport report={report.data}/>}
+    {funnel?.error&&<p className="alertBanner error">
+      Diagnóstico de funil indisponível: {funnel.error}
+      A leitura de configuração pode continuar disponível abaixo.</p>}
+    {funnelError&&<p className="alertBanner error">{funnelError}</p>}
+    {report?.data&&<InterpreterReport report={report.data}
+      funnel={funnelConsistent?funnel?.data:null}/>}
+    {!report?.data&&funnelConsistent&&funnel?.data&&
+      <FunnelPanel report={funnel.data}/>} 
     {!campaignId&&<section className="historySummary">
       <h2>Comece pela campanha de vendas</h2>
       <p>Selecione uma campanha para comparar otimização declarada, cliques, visitas,
@@ -157,7 +179,9 @@ export default async function InterpreterPage({searchParams}:{searchParams:Promi
   </main>;
 }
 
-function InterpreterReport({report:r}:{report:Report}) {
+function InterpreterReport({report:r,funnel}:{
+  report:Report;funnel?:FunnelReport|null;
+}) {
   return <>
     {r.partialCurrentDay&&<p className="alertBanner caution" role="status">
       MONITORAMENTO DE HOJE — RESULTADOS PARCIAIS. Investimento, cliques,
@@ -180,6 +204,7 @@ function InterpreterReport({report:r}:{report:Report}) {
     {!r.complete&&<p className="alertBanner caution">
       Relatório parcial: o limite de paginação foi atingido. Não use as linhas
       abaixo para ranquear todas as peças ou distribuir orçamento.</p>}
+    {funnel&&<FunnelPanel report={funnel}/>}
     <section className="historySummary">
       <h2>O que a configuração sugere verificar</h2>
       {r.adsets.length===0?<p>Sem conjuntos retornados.</p>:
@@ -198,7 +223,9 @@ function InterpreterReport({report:r}:{report:Report}) {
         confirmadas na Nuvemshop nem prova de aumento incremental de vendas.
         O AdPilot não verificou a composição efetiva dos públicos,
         Advantage+ Audience ou a fase de aprendizado.</p>
-      <ul>{r.warnings.map(w=><li key={w}>{w.replaceAll("_"," ").toLowerCase()}</li>)}</ul>
+      <details><summary>Ver códigos técnicos do diagnóstico de entrega</summary>
+        <ul>{r.warnings.map(w=><li key={w}><code>{w}</code></li>)}</ul>
+      </details>
     </section>
   </>;
 }
