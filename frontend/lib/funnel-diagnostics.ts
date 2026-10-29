@@ -44,11 +44,12 @@ export function safeEventRatio(previous:number|null, next:number|null,
     reported:number|null, complete:boolean):RatioDisplay {
   if(!complete) return {status:"INCOMPLETE",value:null};
   const before=numeric(previous),after=numeric(next),pct=numeric(reported);
+  if(before!==null&&after!==null&&after>before)
+    return {status:"NON_SEQUENTIAL",value:null};
   if(before===null||after===null||pct===null)
     return {status:"MISSING",value:null};
   // Events need not be a sequential cohort. Do not display 1100% as conversion.
-  if(after>before || pct>100 || (before===0&&after>0))
-    return {status:"NON_SEQUENTIAL",value:null};
+  if(pct>100) return {status:"NON_SEQUENTIAL",value:null};
   if(before===0) return {status:"MISSING",value:null};
   return {status:"OBSERVED",value:pct};
 }
@@ -72,13 +73,16 @@ export function buildFunnelStages(funnel:FunnelEvidence,complete:boolean):Funnel
   ];
   const positive=raw.map(s=>numeric(s.count)).filter((n):n is number=>n!==null&&n>0);
   const peak=Math.max(0,...positive);
+  const spend=numeric(funnel.spend);
   return raw.map((stage,i)=>({
     key:stage.key,label:stage.label,count:numeric(stage.count),
     relativeWidth:stage.count===null||peak===0?0:
       Math.min(100,Math.max(0,(numeric(stage.count)??0)/peak*100)),
     ratio:i===0?{status:"MISSING" as const,value:null}:
       safeEventRatio(stage.previous,stage.count,stage.ratio,complete),
-    cost:complete?numeric(stage.cost):null,costLabel:stage.costLabel,
+    // Attribution can arrive on zero-spend days: do not show free conversions.
+    cost:complete&&spend!==null&&spend>0?numeric(stage.cost):null,
+    costLabel:stage.costLabel,
   }));
 }
 
