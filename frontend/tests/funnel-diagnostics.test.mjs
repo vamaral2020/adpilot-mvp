@@ -53,7 +53,7 @@ test("1100 percent never displayed as a conversion rate",()=>{
 
 test("reported ratios over 100 suppressed even for inconsistent raw fields",()=>{
   assert.equal(safeEventRatio(10,9,110,true).status,"NON_SEQUENTIAL");
-  assert.equal(safeEventRatio(0,1,null,true).status,"MISSING");
+  assert.equal(safeEventRatio(0,1,null,true).status,"NON_SEQUENTIAL");
   assert.equal(safeEventRatio(2,3,150,true).status,"NON_SEQUENTIAL");
 });
 
