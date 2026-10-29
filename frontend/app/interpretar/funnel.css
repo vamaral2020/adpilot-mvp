@@ -71,3 +71,89 @@
   .funnelPanel{padding:16px}
 }
 @media(prefers-reduced-motion:reduce){.funnelFill{transition:none}}
+
+
+/* PR058 — screen-only density and hierarchy. PDF/print is deliberately excluded. */
+@media screen {
+  .interpretContext{
+    display:flex;align-items:center;justify-content:space-between;
+    gap:10px 20px;flex-wrap:wrap;
+    border:1px solid #2b4059;background:#132135;border-radius:12px;
+    padding:13px 18px;margin:18px 0 14px;
+  }
+  .interpretContextMain{
+    display:flex;align-items:center;gap:9px 13px;flex-wrap:wrap;min-width:0;
+    font-size:12px;color:#9db4cd;
+  }
+  .interpretContextMain>.smallEyebrow{font-size:10px;letter-spacing:1px}
+  .interpretContextMain>strong{font-size:14px;color:#f0f5ff}
+  .interpretContextTag{
+    padding:5px 9px;border:1px solid #476283;border-radius:20px;
+    background:#203550;color:#c3dbf3;font-size:10px;font-weight:720
+  }
+  .interpretContext>p{font-size:11px;color:#9bb1cb;margin:0;line-height:1.5}
+  .funnelScreen{gap:15px;margin:14px 0 20px}
+  .funnelPanel{padding:clamp(17px,2vw,24px)}
+  .funnelSectionHead{margin-bottom:14px}
+  .funnelSectionHead h2{font-size:19px;margin:6px 0 5px}
+  .funnelOverview{gap:9px;margin:15px 0 17px}
+  .funnelOverview>div{padding:13px 15px;gap:7px}
+  .funnelOverview strong{font-size:clamp(17px,1.8vw,22px)}
+  .funnelStages{gap:8px}
+  .funnelStage{padding:12px 15px}
+  .funnelStageHead{margin-bottom:9px}
+  .funnelStageHead b{font-size:19px}
+  .funnelStageMeta{gap:8px 20px;margin-top:9px}
+  .funnelStageMeta>span{font-size:10px;min-width:125px}
+  .funnelStageMeta strong{font-size:13px}
+  .funnelStageNote{font-size:11px;margin:8px 0 0}
+  .funnelFootnote{margin-top:16px;padding-top:12px}
+  .funnelDetailsDisclosure>summary,
+  .interpretAdvanced>summary{
+    cursor:pointer;list-style:revert;
+    color:#c9defa;font-weight:730;
+    border-radius:8px;
+  }
+  .funnelDetailsDisclosure>summary{padding:2px 3px}
+  .funnelDisclosureTitle{display:inline;font-size:16px}
+  .funnelDisclosureSubtitle{display:block;color:#91a9c5;
+    font-size:11px;font-weight:450;line-height:1.6;margin:5px 0 0 17px}
+  .funnelDisclosureBody{padding-top:18px}
+  .funnelDisclosureBody .funnelDetail{margin-top:14px}
+  .interpretAdvanced{
+    border:1px solid #2d425c;border-radius:12px;background:#111e2e;
+    padding:16px 20px;margin:18px 0 24px;
+  }
+  .interpretAdvanced>summary{font-size:13px}
+  .interpretAdvancedBody{margin-top:18px}
+  .interpretAdvancedBody .historySummary{margin-top:15px}
+  .funnelDetailsDisclosure>summary:focus-visible,
+  .interpretAdvanced>summary:focus-visible{
+    outline:2px solid #89b7ff;outline-offset:5px
+  }
+  .funnelDetailsDisclosure[open]>summary,
+  .interpretAdvanced[open]>summary{color:#e7f2ff}
+}
+@media screen and (min-width:1000px) {
+  .funnelStage{
+    display:grid;grid-template-columns:minmax(0,1fr) minmax(290px,.66fr);
+    align-items:center;gap:8px 20px;
+  }
+  .funnelStageMeta{
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    align-items:center;margin:0;gap:12px;
+  }
+  .funnelStageMeta>span{min-width:0}
+  .funnelStageNote{grid-column:1/-1;margin:0}
+}
+@media screen and (max-width:850px){
+  .interpretContext{align-items:flex-start}
+  .funnelOverview{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media screen and (max-width:420px){
+  .funnelOverview{grid-template-columns:minmax(0,1fr)}
+  .funnelStageMeta>span{min-width:0}
+  .funnelStageMeta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .interpretContext{padding:12px 14px}
+  .interpretAdvanced{padding:13px 15px}
+}
