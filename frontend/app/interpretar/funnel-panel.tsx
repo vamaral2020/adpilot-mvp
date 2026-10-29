@@ -41,7 +41,8 @@ export function FunnelPanel({report:r}:{report:FunnelReport}) {
         <div><small>Compras atribuídas</small>
           <strong>{count(r.campaign?.attributedPurchases)}</strong></div>
         <div><small>CPA atribuído</small>
-          <strong>{amount(r.campaign?.attributedCpa,r.currency)}</strong></div>
+          <strong>{r.complete&&r.campaign?.spend!=null&&r.campaign.spend>0
+            ?amount(r.campaign?.attributedCpa,r.currency):"Não consolidado"}</strong></div>
       </div>
       {countAvailable&&<ol className="funnelStages" aria-label="Contagens de eventos por etapa">
         {stages.map((s,i)=><li className="funnelStage" key={s.key}>
@@ -107,7 +108,7 @@ export function FunnelPanel({report:r}:{report:FunnelReport}) {
           const v=readableFinding(finding);
           return <article className="funnelFinding" key={v.ruleCode+"-"+i}>
             <div className="funnelFindingHead"><h3>{v.title}</h3>
-              <span>Confiança: {v.confidence}</span></div>
+              <span>Prioridade: {v.priority} · Confiança: {v.confidence}</span></div>
             <p>{v.observation}</p>
             <p><strong>O que verificar: </strong>{v.suggestedCheck}</p>
           </article>;
