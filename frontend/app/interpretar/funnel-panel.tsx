@@ -115,15 +115,21 @@ export function FunnelPanel({report:r}:{report:FunnelReport}) {
         })}</div>}
     </section>
 
-    <section className="funnelPanel" aria-label="Detalhamento dos conjuntos e anúncios">
-      <div className="funnelSectionHead">
-        <div><h2>Detalhamento por conjunto e anúncio</h2>
-          <p>Não somamos conjuntos e anúncios entre si, pois representam
-            visões diferentes dos mesmos eventos.</p></div>
+    <details className="funnelPanel funnelDetailsDisclosure"
+      aria-label="Detalhamento dos conjuntos e anúncios">
+      <summary>
+        <span className="funnelDisclosureTitle">Detalhamento por conjunto e anúncio</span>
+        <span className="funnelDisclosureSubtitle">
+          {r.adsets.length} conjuntos · {r.ads.length} anúncios · Consultar métricas por nível
+        </span>
+      </summary>
+      <div className="funnelDisclosureBody">
+        <p className="funnelMuted">Conjuntos e anúncios representam visões
+          diferentes dos mesmos eventos. Não são somados entre si.</p>
+        <FunnelDetail title="Conjuntos" data={r.adsets} currency={r.currency} complete={r.complete}/>
+        <FunnelDetail title="Anúncios" data={r.ads} currency={r.currency} complete={r.complete}/>
       </div>
-      <FunnelDetail title="Conjuntos" data={r.adsets} currency={r.currency} complete={r.complete}/>
-      <FunnelDetail title="Anúncios" data={r.ads} currency={r.currency} complete={r.complete}/>
-    </section>
+    </details>
   </div>;
 }
 
